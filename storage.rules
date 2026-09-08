@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /lojistas/{lojaId}/{arquivo=**} {
+      allow read: if true;                        // a Wallet precisa baixar a imagem
+      allow write: if request.auth != null
+                   && request.auth.token.lojas != null
+                   && request.auth.token.lojas[lojaId] == 'dono'
+                   && request.resource.size < 2 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+    match /exports/{p=**} { allow read, write: if false; }
+  }
+}

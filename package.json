@@ -1,0 +1,45 @@
+{
+  "name": "mimo-fidelidade",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Mimo — Plataforma multiempresa de fidelidade em carteira digital (Apple Wallet & Google Wallet)",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "server": "tsx src/server.ts",
+    "dev:server": "tsx watch src/server.ts",
+    "test": "tsx src/tests/run-all.ts",
+    "client:dev": "npm --prefix client run dev",
+    "client:build": "npm --prefix client run build",
+    "dev": "concurrently \"npm run dev:server\" \"npm run client:dev\""
+  },
+  "keywords": [
+    "loyalty",
+    "apple-wallet",
+    "google-wallet",
+    "pkpass",
+    "saas"
+  ],
+  "author": "Mimo Team",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/static": "^7.0.4",
+    "archiver": "^7.0.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.2",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^22.5.0",
+    "@types/uuid": "^10.0.0",
+    "concurrently": "^8.2.2",
+    "firebase-tools": "^15.29.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

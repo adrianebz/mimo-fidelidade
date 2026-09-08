@@ -1,0 +1,161 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Mimo — Fidelidade Digital
+ * Marca: preto grafite, amarelo Mimo, off-white, verde.
+ * Estrutura visual tvOS: fundo quase preto, tipografia grande, cor com parcimônia.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --radius-2xl: calc(var(--radius) + 12px);
+  --radius-3xl: calc(var(--radius) + 20px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 1rem;
+
+  /* Superfícies quase-pretas */
+  --background: oklch(0.14 0.004 285);
+  --foreground: oklch(0.98 0.002 90);
+  --surface: oklch(0.18 0.004 285);
+  --surface-elevated: oklch(0.23 0.005 285);
+  --card: oklch(0.18 0.004 285);
+  --card-foreground: oklch(0.98 0.002 90);
+  --popover: oklch(0.18 0.004 285);
+  --popover-foreground: oklch(0.98 0.002 90);
+
+  /* Amarelo Mimo #FFC82C */
+  --primary: oklch(0.855 0.163 88);
+  --primary-foreground: oklch(0.16 0.004 285);
+
+  --secondary: oklch(0.26 0.005 285);
+  --secondary-foreground: oklch(0.98 0.002 90);
+  --muted: oklch(0.24 0.005 285);
+  --muted-foreground: oklch(0.72 0.008 285);
+  --accent: oklch(0.26 0.005 285);
+  --accent-foreground: oklch(0.98 0.002 90);
+
+  /* Verde Mimo #16A34A */
+  --success: oklch(0.63 0.16 150);
+  --success-foreground: oklch(0.98 0.002 90);
+
+  --destructive: oklch(0.63 0.21 25);
+  --destructive-foreground: oklch(0.98 0.002 90);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.855 0.163 88);
+
+  --gradient-yellow: linear-gradient(135deg, oklch(0.9 0.15 95), oklch(0.83 0.17 82));
+  --gradient-surface: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--surface) 96%, var(--primary)),
+    var(--background)
+  );
+  --shadow-glow: 0 24px 70px -30px color-mix(in oklab, var(--primary) 60%, transparent);
+  --shadow-card: 0 20px 50px -30px oklch(0 0 0 / 80%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility label-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+@utility surface-panel {
+  background: var(--gradient-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+}
+
+@utility btn-mimo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.875rem 1.75rem;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  background: var(--gradient-yellow);
+  color: var(--color-primary-foreground);
+  box-shadow: var(--shadow-glow);
+  transition:
+    transform 0.2s ease,
+    filter 0.2s ease;
+}
+
+@utility btn-mimo-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.875rem 1.75rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}

@@ -1,0 +1,58 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "cartoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "ultimoSeloEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cartoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "clienteId", "order": "ASCENDING" },
+        { "fieldPath": "ciclo", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cartoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clienteId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "aniversarioMMDD", "order": "ASCENDING" },
+        { "fieldPath": "verificado", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "resgates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "em", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "cartoes",
+      "fieldPath": "totpSecret",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "cartoes",
+      "fieldPath": "expiraEm",
+      "ttlConfig": {}
+    }
+  ]
+}

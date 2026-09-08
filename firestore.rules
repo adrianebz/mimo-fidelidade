@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() { return request.auth != null; }
+    function ehOperador(lojaId) {
+      return autenticado() && (
+        (request.auth.token.lojas != null && (request.auth.token.lojas[lojaId] == 'dono' || request.auth.token.lojas[lojaId] == 'operador')) ||
+        (exists(/databases/$(database)/documents/lojistas/$(lojaId)) && 
+         get(/databases/$(database)/documents/lojistas/$(lojaId)).data.operadores[request.auth.uid] != null)
+      );
+    }
+    function meuTel() {
+      return autenticado() && request.auth.token.phone_number != null
+        ? request.auth.token.phone_number.replace('\\+','') : 'x';
+    }
+
+    match /usuarios/{uid} {
+      allow read, update: if autenticado() && request.auth.uid == uid;
+      allow create, delete: if false;
+    }
+
+    match /lojistas/{lojaId} {
+      allow read: if true;                        // layout público p/ página de cadastro
+      allow write: if ehOperador(lojaId);
+
+      match /clientes/{clienteId} {
+        allow read: if ehOperador(lojaId);
+        allow write: if false;                    // só Functions
+      }
+      match /itens/{itemId} {
+        allow read: if true;                      // catálogo é público
+        allow write: if ehOperador(lojaId);
+      }
+      match /campanhas/{id} {
+        allow read, write: if ehOperador(lojaId);
+      }
+      match /agregados/{id} {
+        allow read: if ehOperador(lojaId);
+        allow write: if false;
+      }
+      match /convites/{id} {
+        allow read, write: if ehOperador(lojaId);
+      }
+    }
+
+    match /cartoes/{cartaoId} {
+      // cliente lê o próprio cartão; operador lê os da loja dele
+      allow read: if autenticado() && (
+        resource.data.clienteId == meuTel() ||
+        ehOperador(resource.data.lojaId)
+      );
+      allow write: if false;                      // só Functions
+
+      match /eventos/{eventoId} {
+        allow read: if ehOperador(get(/databases/$(database)/documents/cartoes/$(cartaoId)).data.lojaId);
+        allow write: if false;
+      }
+    }
+
+    match /resgates/{id} {
+      allow read: if ehOperador(resource.data.lojaId);
+      allow write: if false;
+    }
+
+    match /auditoria/{id} {
+      allow read: if ehOperador(resource.data.lojaId);
+      allow write: if false;
+    }
+  }
+}
