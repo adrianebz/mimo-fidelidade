@@ -36,3 +36,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Android & Gradle
+.gradle/
+**/build/
+local.properties
+*.apk.sha1
+

@@ -11,9 +11,17 @@ import { SitePainel } from './pages/site/SitePainel.js';
 import { CustomerEnrollSlug } from './pages/CustomerEnrollSlug.js';
 
 export const App: React.FC = () => {
+  // Modo aplicativo nativo (APK): abre direto no Painel do Lojista e desativa páginas de marketing
+  const isAppMode = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('mode') === 'app' ||
+    navigator.userAgent.includes('MimoScannerApp') ||
+    (window as any).isNativeApp === true
+  );
+
   // Website active tab: inicio, como-funciona, precos, contato, login, painel, cliente-slug
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [siteTab, setSiteTab] = useState<SiteNavTab>(() => {
+    if (isAppMode) return 'painel';
     const path = window.location.pathname;
     if (path.includes('painel')) return 'painel';
     if (path.includes('login') || path.includes('entrar')) return 'login';
@@ -25,12 +33,16 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (currentPath.startsWith('/c/')) return;
+    if (isAppMode && siteTab !== 'painel' && siteTab !== 'login') {
+      setSiteTab('painel');
+      return;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const pathMap: Record<SiteNavTab, string> = {
-      'inicio': '/',
-      'como-funciona': '/como-funciona',
-      'precos': '/precos',
-      'contato': '/contato',
+      'inicio': isAppMode ? '/painel' : '/',
+      'como-funciona': isAppMode ? '/painel' : '/como-funciona',
+      'precos': isAppMode ? '/painel' : '/precos',
+      'contato': isAppMode ? '/painel' : '/contato',
       'login': '/login',
       'painel': '/painel',
     };
@@ -38,10 +50,14 @@ export const App: React.FC = () => {
       window.history.pushState({}, '', pathMap[siteTab]);
       setCurrentPath(pathMap[siteTab]);
     }
-  }, [siteTab]);
+  }, [siteTab, isAppMode]);
 
   useEffect(() => {
     const handlePopState = () => {
+      if (isAppMode) {
+        setSiteTab('painel');
+        return;
+      }
       const path = window.location.pathname;
       setCurrentPath(path);
       if (path.includes('painel')) setSiteTab('painel');
@@ -53,7 +69,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [isAppMode]);
 
   // Se a rota atual for o cadastro público do cliente (/c/{slug})
   if (currentPath.startsWith('/c/')) {
@@ -66,6 +82,14 @@ export const App: React.FC = () => {
         }}
       />
     );
+  }
+
+  // Se estiver em modo app (APK), garante que NUNCA renderiza a página institucional
+  if (isAppMode) {
+    if (siteTab === 'login') {
+      return <SiteLogin onNavigate={(tab) => setSiteTab(tab)} />;
+    }
+    return <SitePainel onNavigate={(tab) => setSiteTab(tab)} />;
   }
 
   // Se estiver no painel do lojista, renderiza o layout específico do painel sem o cabeçalho público
