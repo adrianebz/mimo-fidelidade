@@ -6,8 +6,18 @@ import {
 } from 'lucide-react';
 
 export const DesktopCardStudio: React.FC = () => {
-  const [storeName, setStoreName] = useState('Padaria Central');
-  const [rewardLabel, setRewardLabel] = useState('1 Café Espresso Grátis');
+  const [storeName, setStoreName] = useState('Minha Loja');
+  const [headline, setHeadline] = useState('Fidelidade Mimo');
+  const [rewardLabel, setRewardLabel] = useState('1 Produto Grátis');
+  const [rewardTitle, setRewardTitle] = useState('1 Produto Grátis');
+  const [stampsGoal, setStampsGoal] = useState(10);
+  const [stampIcon, setStampIcon] = useState('coffee');
+  const [paletteId, setPaletteId] = useState('warm-terracotta');
+  const [customHex, setCustomHex] = useState('#B85D19');
+  const [textColor, setTextColor] = useState('#FFFFFF');
+  const [currentPassToken, setCurrentPassToken] = useState(
+    'mimo-pass-minha-loja-8f3a',
+  );
   const [stampCount, setStampCount] = useState(8);
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,7 +29,7 @@ export const DesktopCardStudio: React.FC = () => {
     if (qrCanvasRef.current) {
       QRCode.toCanvas(
         qrCanvasRef.current,
-        'mimo-pass-padaria-central-8f3a',
+        currentPassToken,
         {
           width: 140,
           margin: 1,

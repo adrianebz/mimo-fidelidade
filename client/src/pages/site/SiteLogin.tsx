@@ -7,7 +7,7 @@ interface SiteLoginProps {
 }
 
 export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate }) => {
-  const [email, setEmail] = useState("loja@casanuvem.com.br");
+  const [email, setEmail] = useState("lojista@minhaloja.com.br");
   const [senha, setSenha] = useState("••••••••");
   const [loading, setLoading] = useState(false);
   const [lembrar, setLembrar] = useState(true);
@@ -21,7 +21,7 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate }) => {
   };
 
   const handleDemoLogin = () => {
-    setEmail("lia@casanuvem.com.br");
+    setEmail("lojista@minhaloja.com.br");
     setSenha("senha-segura");
     setLoading(true);
     setTimeout(() => {
@@ -63,7 +63,7 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate }) => {
                 </span>
               </div>
               <p className="text-xs text-foreground font-medium">
-                Loja modelo: <strong className="text-primary">Casa Nuvem</strong> (Lia Martins)
+                Ambiente: <strong className="text-primary">Painel do Lojista</strong> (Balcão Ativo)
               </p>
             </div>
             <button

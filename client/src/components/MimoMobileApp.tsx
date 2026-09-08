@@ -53,7 +53,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
     if (qrCanvasRef.current && currentScreen === 'convite') {
       QRCode.toCanvas(
         qrCanvasRef.current,
-        'https://mimo-fidelidade.web.app/entrar/inv_padaria_demo',
+        'https://mimo-fidelidade.web.app/c/minha-loja',
         {
           width: 200,
           margin: 1,
@@ -69,7 +69,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
     if (passQrRef.current && currentScreen === 'wallet-pass') {
       QRCode.toCanvas(
         passQrRef.current,
-        'mimo-pass-padaria-central-8f3a',
+        'mimo-pass-minha-loja-8f3a',
         {
           width: 130,
           margin: 1,
@@ -157,7 +157,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
                     <label className="text-[11px] font-bold text-white/60 uppercase block mb-1">E-mail</label>
                     <input
                       type="email"
-                      defaultValue="lojista@padariacentral.com"
+                      defaultValue="lojista@minhaloja.com.br"
                       className="input-mimo-dark text-xs"
                     />
                   </div>
@@ -202,7 +202,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
                     P
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-white leading-tight">Padaria Central</h3>
+                    <h3 className="text-sm font-black text-white leading-tight">Minha Loja</h3>
                     <span className="text-[10px] text-emerald-400 font-semibold">Caixa Aberto</span>
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
             <div className="flex-1 flex flex-col justify-between p-6 text-center animate-fade-in">
               {/* Header */}
               <div className="flex items-center justify-between border-b border-white/8 pb-3">
-                <span className="text-xs font-bold text-white">Padaria Central</span>
+                <span className="text-xs font-bold text-white">Minha Loja</span>
                 <button
                   type="button"
                   onClick={() => setCurrentScreen('home')}
@@ -416,7 +416,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
                     Selo registrado!
                   </h2>
                   <p className="text-xs text-white/60 mt-1">
-                    {customerName} • Padaria Central
+                    {customerName} • Minha Loja
                   </p>
                 </div>
 
@@ -502,7 +502,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
                     <div className="w-9 h-9 rounded-xl bg-[#FFC82C] text-black font-black flex items-center justify-center text-sm mx-auto shadow-md">
                       P
                     </div>
-                    <span className="text-xs font-bold text-white mt-1 block">Padaria Central</span>
+                    <span className="text-xs font-bold text-white mt-1 block">Minha Loja</span>
                   </div>
                 </div>
 
@@ -562,7 +562,7 @@ export const MimoMobileApp: React.FC<MimoMobileAppProps> = ({
                 {/* Mini Wallet Pass Mockup */}
                 <div className="bg-[#16161A] border-2 border-[#2E2E38] rounded-2xl p-4 text-white shadow-xl space-y-2 max-w-[280px] mx-auto">
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                    <span className="text-[10px] font-black text-white">Padaria Central</span>
+                    <span className="text-[10px] font-black text-white">Minha Loja</span>
                     <span className="text-[9px] font-mono text-[#FFC82C]">0/10 SELOS</span>
                   </div>
 

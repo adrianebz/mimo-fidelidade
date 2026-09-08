@@ -139,18 +139,17 @@ const initialCustomers: Customer[] = [
 ];
 
 const initialProgramItems: ProgramItem[] = [
-  { id: "p1", name: "Café Expresso Especial", category: "Bebidas", price: 12.0, stampsGiven: 1, active: true, totalStampsGenerated: 1240, revenue: 14880 },
-  { id: "p2", name: "Pão de Queijo Canastra", category: "Salgados", price: 9.0, stampsGiven: 1, active: true, totalStampsGenerated: 890, revenue: 8010 },
-  { id: "p3", name: "Croissant de Amêndoas", category: "Confeitaria", price: 15.0, stampsGiven: 1, active: true, totalStampsGenerated: 650, revenue: 9750 },
-  { id: "p4", name: "Cold Brew Caramel", category: "Bebidas", price: 15.0, stampsGiven: 1, active: true, totalStampsGenerated: 410, revenue: 6150 },
-  { id: "p5", name: "Bolo de Cenoura Ganache", category: "Confeitaria", price: 12.0, stampsGiven: 1, active: true, totalStampsGenerated: 380, revenue: 4560 },
-  { id: "p6", name: "Combo Café + Pão de Queijo", category: "Combos", price: 19.0, stampsGiven: 2, active: true, totalStampsGenerated: 512, revenue: 9728 },
+  { id: "p1", name: "Produto / Serviço Padrão", category: "Geral", price: 20.0, stampsGiven: 1, active: true, totalStampsGenerated: 1240, revenue: 24800 },
+  { id: "p2", name: "Item Especial", category: "Destaques", price: 35.0, stampsGiven: 1, active: true, totalStampsGenerated: 890, revenue: 31150 },
+  { id: "p3", name: "Combo Fidelidade", category: "Combos", price: 50.0, stampsGiven: 2, active: true, totalStampsGenerated: 650, revenue: 32500 },
+  { id: "p4", name: "Experiência Premium", category: "Premium", price: 75.0, stampsGiven: 3, active: true, totalStampsGenerated: 410, revenue: 30750 },
 ];
 
 export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = ({ onNavigate }) => {
   const [currentTab, setCurrentTab] = useState<DashboardTab>("visao-geral");
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
-  const [selectedUnit, setSelectedUnit] = useState("Pinheiros (Matriz)");
+  const [selectedUnit, setSelectedUnit] = useState("Loja Principal");
+  const [currentSlug, setCurrentSlug] = useState(() => new URLSearchParams(window.location.search).get("loja") || "minha-loja");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -189,17 +188,17 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
   // Card Customizer State (Identidade do Cartão & Imagens Personalizadas)
   const [cardConfig, setCardConfig] = useState({
-    storeName: "Casa Nuvem",
-    tagline: "Cafés Especiais & Confeitaria Artesanal",
-    storeIcon: "coffee",
+    storeName: "Minha Loja",
+    tagline: "Programa de Fidelidade Digital",
+    storeIcon: "award",
     storeLogoImage: "" as string | null, // URL or base64
     bgColor: "#141416",
     cardStyle: "dark-graphite",
-    accentColor: "#FFC82C",
+    accentColor: "#7C3AED",
     textColor: "#FFFFFF",
-    stampIcon: "coffee",
+    stampIcon: "award",
     stampImage: "" as string | null, // Selo das unidades 1-9
-    rewardTitle: "1 Café Filtrado Especial + Pão de Queijo Canastra",
+    rewardTitle: "Recompensa Exclusiva (10º Selo)",
     rewardDescription: "Apresente o QR Code no balcão e retire seu mimo.",
     rewardStampImage: "" as string | null, // Selo do 10º mimo
     validityDays: "30",
@@ -210,7 +209,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
   // Sincroniza dados e status administrativo da empresa direto do Firestore
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const slug = params.get("loja") || "casa-nuvem";
+    const slug = params.get("loja") || "minha-loja";
+    setCurrentSlug(slug);
     obterDadosLojista(slug).then((loja) => {
       if (loja.statusFinanceiro) {
         setFinancialStatus(loja.statusFinanceiro);
@@ -297,7 +297,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
       const result = await carimbarSelo({
         qr: qrText.trim(),
         pin: operatorPin,
-        lojaId: "casa-nuvem",
+        lojaId: currentSlug,
       });
 
       setLastStampResult(result);
@@ -403,17 +403,17 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
   // Stamp update strictly via Customer QR Code scan
   const handleScanCustomerQR = (customerId: string) => {
     const target = customers.find((c) => c.id === customerId);
-    const token = target?.qrToken || `MIMO:casa-nuvem_${customerId}_1:123456`;
+    const token = target?.qrToken || `MIMO:${currentSlug}_${customerId}_1:123456`;
     processStamp(token);
   };
 
   const handleRedeemReward = async (customerId: string) => {
     try {
-      const cartaoId = lastStampResult?.cartaoId || `casa-nuvem_${customerId}_1`;
+      const cartaoId = lastStampResult?.cartaoId || `${currentSlug}_${customerId}_1`;
       const res = await resgatarPremio({
         cartaoId,
         pin: operatorPin,
-        lojaId: "casa-nuvem",
+        lojaId: currentSlug,
       });
 
       setCustomers((prev) =>
@@ -754,7 +754,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                    Link do balcão: <strong className="text-foreground">/c/casa-nuvem</strong>
+                    Link do balcão: <strong className="text-foreground">/c/{currentSlug}</strong>
                   </p>
                 </div>
               </div>
@@ -763,7 +763,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 <button
                   type="button"
                   onClick={() => {
-                    const url = `${window.location.origin}/c/casa-nuvem`;
+                    const url = `${window.location.origin}/c/${currentSlug}`;
                     navigator.clipboard.writeText(url);
                     showToast("Link de cadastro copiado para o clipboard!");
                   }}
@@ -773,7 +773,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <span>Copiar Link</span>
                 </button>
                 <a
-                  href="/c/casa-nuvem"
+                  href={`/c/${currentSlug}`}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-mimo px-4 py-2 text-xs font-bold flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-md cursor-pointer"
@@ -2271,7 +2271,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                       type="text"
                       value={manualCodeInput}
                       onChange={(e) => setManualCodeInput(e.target.value)}
-                      placeholder="Ex: MIMO:casa-nuvem... ou (11) 98765-4321"
+                      placeholder="Ex: MIMO:minhaloja... ou (11) 98765-4321"
                       className="flex-1 bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-foreground font-mono focus:outline-none focus:border-primary"
                     />
                     <button
@@ -2369,12 +2369,12 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
               <span>Cliente novo sem cadastro?</span>
               <a
-                href="/c/casa-nuvem"
+                href={`/c/${currentSlug}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-primary hover:underline font-bold flex items-center gap-1"
               >
-                <span>Abrir página de cadastro (/c/casa-nuvem)</span>
+                <span>Abrir página de cadastro (/c/{currentSlug})</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -2581,7 +2581,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 Fechar
               </button>
               <a
-                href="https://wa.me/5511999999999?text=Ol%C3%A1%2C%20sou%20Lia%20Martins%20da%20loja%20Casa%20Nuvem%20e%20gostaria%20de%20solicitar%20a%20valida%C3%A7%C3%A3o%2Fdesbloqueio%20da%20minha%20conta%20no%20MIMO."
+                href={`https://wa.me/5511999999999?text=${encodeURIComponent(`Olá, sou da loja ${cardConfig.storeName} e gostaria de solicitar a validação/desbloqueio da minha conta no MIMO.`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-lg"

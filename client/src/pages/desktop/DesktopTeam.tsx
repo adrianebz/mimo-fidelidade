@@ -19,7 +19,7 @@ export const DesktopTeam: React.FC = () => {
     {
       id: '1',
       name: 'Thiago Silva',
-      email: 'thiago.silva@padaria.com',
+      email: 'thiago.silva@empresa.com',
       role: 'Gerente da Loja',
       shift: 'Manhã',
       stampsGiven: 142,
@@ -28,7 +28,7 @@ export const DesktopTeam: React.FC = () => {
     {
       id: '2',
       name: 'Carla Santos',
-      email: 'carla.santos@padaria.com',
+      email: 'carla.santos@empresa.com',
       role: 'Atendente Balcão',
       shift: 'Tarde',
       stampsGiven: 98,
@@ -37,7 +37,7 @@ export const DesktopTeam: React.FC = () => {
     {
       id: '3',
       name: 'João Paulo',
-      email: 'joao.paulo@padaria.com',
+      email: 'joao.paulo@empresa.com',
       role: 'Operador Caixa',
       shift: 'Integral',
       stampsGiven: 67,
@@ -46,7 +46,7 @@ export const DesktopTeam: React.FC = () => {
     {
       id: '4',
       name: 'Lucas Mendes',
-      email: 'lucas.mendes@padaria.com',
+      email: 'lucas.mendes@empresa.com',
       role: 'Atendente Balcão',
       shift: 'Manhã',
       stampsGiven: 35,
@@ -225,7 +225,7 @@ export const DesktopTeam: React.FC = () => {
                   required
                   value={newMember.email}
                   onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-                  placeholder="atendente@padariacentral.com"
+                  placeholder="atendente@empresa.com"
                   className="input-mimo-dark text-xs"
                 />
               </div>

@@ -28,7 +28,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 public class MainActivity extends AppCompatActivity {
 
     private static final int CAMERA_PERMISSION_CODE = 1001;
-    private static final String APP_URL = "https://mimo-fidelidade.web.app/painel?mode=app&loja=casa-nuvem";
+    private static final String APP_URL = "https://mimo-fidelidade.web.app/painel?mode=app";
 
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;

@@ -22,8 +22,8 @@ interface MimoDesktopShellProps {
 export const MimoDesktopShell: React.FC<MimoDesktopShellProps> = ({
   currentTab,
   onNavigate,
-  orgName = 'Padaria Central',
-  userEmail = 'lojista@padariacentral.com',
+  orgName = 'Minha Loja',
+  userEmail = 'lojista@minhaloja.com.br',
   onLogout,
   viewMode,
   onToggleViewMode,

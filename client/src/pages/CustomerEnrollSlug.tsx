@@ -36,7 +36,7 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
   // Extrai o slug da URL: /c/{slug}
   const currentPath = window.location.pathname;
   const pathSlug = currentPath.startsWith('/c/') ? currentPath.split('/c/')[1]?.split('/')[0] : '';
-  const activeSlug = slugProp || pathSlug || 'casa-nuvem';
+  const activeSlug = slugProp || pathSlug || 'minha-loja';
 
   const [merchant, setMerchant] = useState<SeedMerchantData | null>(null);
   const [loadingMerchant, setLoadingMerchant] = useState(true);
@@ -184,8 +184,8 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
   }
 
   const loja: SeedMerchantData = merchant || {
-    nome: 'Casa Nuvem',
-    slug: 'casa-nuvem',
+    nome: 'Minha Loja',
+    slug: 'minha-loja',
     ativo: true,
     statusFinanceiro: 'adimplente',
     financeiro: {
@@ -197,8 +197,8 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
     layout: {
       corFundo: '#141416',
       corTexto: '#FFFFFF',
-      nomePrograma: 'Mimo Nuvem',
-      premio: '1 Café Filtrado Especial + Pão de Queijo Canastra',
+      nomePrograma: 'Clube Fidelidade',
+      premio: 'Recompensa Especial (10º Selo)',
       logoUrl: '',
       heroUrl: '',
     },
@@ -210,11 +210,11 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
       exigirSMS: false,
     },
     wallet: {
-      classId: '3388000000012345678.casa-nuvem',
+      classId: '3388000000012345678.minha-loja',
       classSincronizadaEm: new Date().toISOString()
     },
     operadores: {
-      uid_lia: { nome: 'Lia Martins', pin: '1234', papel: 'dono' }
+      operador_balcao: { nome: 'Operador de Balcão', pin: '1234', papel: 'operador' }
     },
     criadoEm: new Date().toISOString()
   };

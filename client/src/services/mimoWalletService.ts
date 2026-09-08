@@ -92,11 +92,12 @@ export async function obterDadosLojista(slug: string): Promise<SeedMerchantData>
   if (SEED_MERCHANTS[slugNormalizado]) {
     return SEED_MERCHANTS[slugNormalizado];
   }
-  // Fallback padrão: Casa Nuvem ou Padaria da Ana
+  // Fallback padrão: Minha Loja
+  const baseStore = SEED_MERCHANTS['minha-loja'] || Object.values(SEED_MERCHANTS)[0];
   return {
-    ...SEED_MERCHANTS['casa-nuvem'],
-    slug: slugNormalizado,
-    nome: slugNormalizado.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+    ...baseStore,
+    slug: slugNormalizado || 'minha-loja',
+    nome: slugNormalizado ? slugNormalizado.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) : 'Minha Loja',
   };
 }
 

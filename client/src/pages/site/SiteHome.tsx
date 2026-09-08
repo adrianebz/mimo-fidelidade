@@ -120,14 +120,14 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
 
             <div className="mt-8 rounded-2xl border border-border bg-background p-6">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-bold">Padaria da Esquina</span>
+                <span className="text-lg font-bold">Sua Loja Favorita</span>
                 <span className="label-eyebrow">Selos</span>
               </div>
               <div className="mt-5">
                 <Stamps />
               </div>
               <p className="mt-5 text-sm text-muted-foreground">
-                Faltam só 2 para o seu café grátis.
+                Faltam só 2 para a sua recompensa exclusiva.
               </p>
             </div>
           </div>
