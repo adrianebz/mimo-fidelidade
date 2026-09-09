@@ -3,6 +3,9 @@ const jwt = require('jsonwebtoken');
 
 const ISSUER_ID = process.env.WALLET_ISSUER_ID || '3388000000023184117';
 
+const fs = require('fs');
+const path = require('path');
+
 const SA = () => {
   if (process.env.WALLET_SA_KEY) {
     try {
@@ -11,7 +14,14 @@ const SA = () => {
       console.warn('WALLET_SA_KEY parse error:', e.message);
     }
   }
-  // Fallback mock credentials for dev/demo testing before Google Issuer console approval
+  const localKeyPath = path.join(__dirname, 'service-account-wallet.json');
+  if (fs.existsSync(localKeyPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(localKeyPath, 'utf8'));
+    } catch (e) {
+      console.warn('Local service-account-wallet.json read error:', e.message);
+    }
+  }
   return {
     client_email: 'mimo-wallet-issuer@mimo-2d6eb.iam.gserviceaccount.com',
     private_key: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0mockkey...\n-----END RSA PRIVATE KEY-----\n'
