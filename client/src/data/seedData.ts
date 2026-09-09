@@ -67,7 +67,7 @@ export const SEED_MERCHANTS: Record<string, SeedMerchantData> = {
       exigirSMS: false
     },
     wallet: {
-      classId: "3388000000012345678.minha-loja",
+      classId: "3388000000023184117.fidelidade",
       classSincronizadaEm: new Date().toISOString()
     },
     operadores: {

@@ -1,7 +1,7 @@
 const { GoogleAuth } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 
-const ISSUER_ID = process.env.WALLET_ISSUER_ID || '3388000000012345678';
+const ISSUER_ID = process.env.WALLET_ISSUER_ID || '3388000000023184117';
 
 const SA = () => {
   if (process.env.WALLET_SA_KEY) {
