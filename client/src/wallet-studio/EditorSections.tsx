@@ -69,6 +69,7 @@ export const BrandSection: React.FC<SectionProps> = ({ design, patch, onError })
         label="Carregar logo (PNG/SVG)"
         value={design.brand.logoDataUrl || design.brand.logoUrl}
         onChange={(dataUrl) => patch({ brand: { ...design.brand, logoDataUrl: dataUrl } })}
+        maxSize={256}
         onError={onError}
       />
     </Field>
@@ -190,6 +191,7 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
           label="Carregar selo (PNG)"
           value={design.stamps.imageDataUrl}
           onChange={(imageDataUrl) => patch({ stamps: { ...design.stamps, imageDataUrl } })}
+          maxSize={128}
           onError={onError}
         />
       </Field>
@@ -254,6 +256,7 @@ export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }
           label="Carregar imagem"
           value={design.reward.imageDataUrl}
           onChange={(imageDataUrl) => patch({ reward: { ...design.reward, imageDataUrl } })}
+          maxSize={160}
           onError={onError}
         />
       </Field>

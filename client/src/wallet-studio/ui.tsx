@@ -1,4 +1,5 @@
 import React from 'react';
+import { resizeImageDataUrl } from './resizeImage.js';
 
 /** Bloco de seção do editor, no estilo dos cards arredondados do painel. */
 export const Section: React.FC<{
@@ -135,27 +136,47 @@ export function Segmented<T extends string | number>({
   );
 }
 
-/** Botão de upload que devolve o arquivo já convertido em data URI. */
+/**
+ * Botão de upload. A imagem é redimensionada para `maxSize` antes de virar
+ * data URI — o design inteiro é salvo num único documento do Firestore
+ * (teto de 1MB), então guardar o arquivo original estouraria o limite.
+ */
 export const ImageUpload: React.FC<{
   label: string;
   value: string | null;
   onChange: (dataUrl: string | null) => void;
   accept?: string;
   maxMb?: number;
+  /** Maior dimensão (px) com que a imagem é armazenada. */
+  maxSize?: number;
   onError?: (msg: string) => void;
-}> = ({ label, value, onChange, accept = 'image/png,image/jpeg,image/svg+xml', maxMb = 2, onError }) => {
+}> = ({
+  label,
+  value,
+  onChange,
+  accept = 'image/png,image/jpeg,image/svg+xml',
+  maxMb = 4,
+  maxSize = 256,
+  onError,
+}) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > maxMb * 1024 * 1024) {
       onError?.(`Arquivo muito grande. Máximo ${maxMb}MB.`);
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => onChange((ev.target?.result as string) || null);
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await resizeImageDataUrl(file, maxSize);
+      onChange(dataUrl);
+    } catch (err: any) {
+      onError?.(err?.message || 'Não foi possível processar a imagem.');
+    } finally {
+      // Permite reenviar o mesmo arquivo depois de remover
+      if (inputRef.current) inputRef.current.value = '';
+    }
   };
 
   return (
