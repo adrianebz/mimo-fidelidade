@@ -316,71 +316,60 @@ exports.sincronizarClasse = onDocumentWritten(
 );
 
 /**
- * Autenticação do administrador master. A senha NUNCA fica no cliente — este
- * endpoint compara contra o secret MIMO_ADMIN_PASS_HASH (hash SHA-256), que
- * precisa ser configurado com `firebase functions:secrets:set MIMO_ADMIN_PASS_HASH`
- * usando uma senha NOVA (a anterior foi exposta publicamente no bundle do
- * cliente e deve ser considerada comprometida).
+ * Provisiona (ou atualiza) a conta de acesso de um lojista no Firebase Auth.
+ *
+ * O login em si NÃO passa mais por Cloud Function: o cliente usa
+ * signInWithEmailAndPassword direto no Firebase Auth. Esta função existe só
+ * para o admin criar/editar o acesso de uma loja — criando o usuário e
+ * gravando as custom claims (role=lojista, lojaId) que o firestore.rules usa
+ * para restringir cada lojista aos dados da própria loja.
+ *
+ * Optamos por usuários nativos do Auth em vez de custom token porque
+ * createCustomToken exige dar à conta de serviço a permissão
+ * iam.serviceAccounts.signBlob — dependência de IAM que essa abordagem evita.
  */
-exports.autenticarAdmin = onCall(
-  { secrets: ['MIMO_ADMIN_PASS_HASH'], region: 'southamerica-east1' },
-  async (req) => {
-    const { email, senha } = req.data || {};
-    if (!email || !senha) {
-      throw new HttpsError('invalid-argument', 'E-mail e senha são obrigatórios.');
-    }
-    const adminEmail = (process.env.MIMO_ADMIN_EMAIL || 'adrianebezerra1605@gmail.com').toLowerCase();
-    const adminHash = process.env.MIMO_ADMIN_PASS_HASH;
-    if (!adminHash) {
-      throw new HttpsError('failed-precondition', 'Login administrativo ainda não configurado (secret MIMO_ADMIN_PASS_HASH ausente).');
-    }
-    const senhaHash = crypto.createHash('sha256').update(String(senha)).digest('hex');
-    if (String(email).toLowerCase().trim() !== adminEmail || senhaHash !== adminHash) {
-      throw new HttpsError('permission-denied', 'E-mail ou senha incorretos.');
-    }
-    // Emite uma sessão real do Firebase Auth (custom claims), para que
-    // firestore.rules possa diferenciar admin de visitante anônimo.
-    const token = await admin.auth().createCustomToken('mimo-admin', { role: 'admin' });
-    return { sucesso: true, token };
-  }
-);
-
-/**
- * Autenticação do lojista. Roda com privilégios de Admin SDK (não depende das
- * regras do Firestore) e nunca devolve o campo `senha` ao cliente — antes essa
- * comparação era feita no navegador, expondo a senha de TODOS os lojistas para
- * quem inspecionasse o bundle/chamadas de rede.
- */
-exports.autenticarLojista = onCall(
+exports.provisionarLojista = onCall(
   { region: 'southamerica-east1' },
   async (req) => {
-    const { email, senha } = req.data || {};
-    if (!email || !senha) {
-      throw new HttpsError('invalid-argument', 'E-mail e senha são obrigatórios.');
+    // Só um admin autenticado pode criar/alterar acessos de lojista.
+    if (req.auth?.token?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Apenas o administrador pode gerenciar acessos de lojista.');
     }
-    const db = admin.firestore();
+
+    const { email, senha, lojaId } = req.data || {};
+    if (!email || !lojaId) {
+      throw new HttpsError('invalid-argument', 'E-mail e lojaId são obrigatórios.');
+    }
+    if (senha && String(senha).length < 6) {
+      throw new HttpsError('invalid-argument', 'A senha precisa ter ao menos 6 caracteres.');
+    }
+
     const emailLimpo = String(email).toLowerCase().trim();
-    const snap = await db.collection('lojistas').where('email', '==', emailLimpo).get();
+    const slug = String(lojaId).toLowerCase().trim();
+    const claims = { role: 'lojista', lojaId: slug };
 
-    let match = null;
-    snap.forEach((d) => {
-      const data = d.data();
-      if (verificaPin(senha, data.senha)) {
-        match = { id: d.id, ...data };
+    let user;
+    try {
+      user = await admin.auth().getUserByEmail(emailLimpo);
+      await admin.auth().updateUser(user.uid, {
+        ...(senha ? { password: String(senha) } : {}),
+        emailVerified: true,
+      });
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+      if (!senha) {
+        throw new HttpsError('invalid-argument', 'Informe uma senha para criar o acesso deste lojista.');
       }
-    });
-
-    if (!match) {
-      throw new HttpsError('permission-denied', 'E-mail ou senha incorretos.');
+      user = await admin.auth().createUser({
+        email: emailLimpo,
+        password: String(senha),
+        emailVerified: true,
+      });
     }
-    delete match.senha;
-    // Emite uma sessão real do Firebase Auth com o lojaId em custom claims,
-    // para que firestore.rules consiga restringir leituras/escritas ao dono.
-    const token = await admin.auth().createCustomToken(`lojista-${match.id}`, {
-      role: 'lojista',
-      lojaId: match.slug || match.id,
-    });
-    return { sucesso: true, lojista: match, token };
+
+    await admin.auth().setCustomUserClaims(user.uid, claims);
+
+    return { sucesso: true, uid: user.uid, lojaId: slug };
   }
 );
 

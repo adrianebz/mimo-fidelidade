@@ -12,7 +12,7 @@
 import { SEED_MERCHANTS, SeedMerchantData } from '../data/seedData.js';
 import { db, auth, functions } from '../firebase.js';
 import { httpsCallable } from 'firebase/functions';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -478,26 +478,82 @@ export async function resgatarPremio(params: {
 // 👑 MÓDULO ADMINISTRADOR DE CONTAS (Master Superadmin - Adriane Bezerra)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// E-mail é só um rótulo de exibição na UI — a senha do admin NUNCA fica no
-// cliente. A verificação real acontece na Cloud Function `autenticarAdmin`.
+// E-mail é só um rótulo de exibição na UI. A senha nunca fica no cliente: a
+// autenticação é feita pelo próprio Firebase Auth.
 export const MASTER_ADMIN_EMAIL = 'adrianebezerra1605@gmail.com';
 
+/** Traduz os códigos do Firebase Auth para mensagens úteis ao usuário. */
+function traduzErroAuth(code: string): string {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'E-mail ou senha incorretos.';
+    case 'auth/too-many-requests':
+      return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.';
+    case 'auth/user-disabled':
+      return 'Esta conta está desativada. Fale com o administrador.';
+    case 'auth/network-request-failed':
+      return 'Falha de conexão. Verifique sua internet e tente novamente.';
+    default:
+      return 'Não foi possível entrar. Tente novamente.';
+  }
+}
+
 /**
- * Autentica o administrador master via Cloud Function (a senha é comparada
- * no servidor contra o secret MIMO_ADMIN_PASS_HASH — nunca no navegador).
+ * Autentica o administrador master pelo Firebase Auth.
+ *
+ * O papel vem das custom claims do próprio token (role=admin), que é o que o
+ * firestore.rules verifica. Esta rota já usou custom token gerado numa Cloud
+ * Function, mas isso exigia dar à conta de serviço permissão para assinar
+ * tokens (iam.serviceAccounts.signBlob); o login nativo dispensa isso.
  */
 export async function autenticarAdminMimo(email: string, senha: string): Promise<{ sucesso: boolean; erro?: string }> {
   try {
-    const fn = httpsCallable<{ email: string; senha: string }, { sucesso: boolean; token?: string }>(functions, 'autenticarAdmin');
-    const { data } = await fn({ email, senha });
-    if (data.sucesso && data.token) {
-      // Estabelece uma sessão real do Firebase Auth (custom claims role=admin),
-      // usada pelas regras do Firestore para liberar leitura/escrita.
-      await signInWithCustomToken(auth, data.token);
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), senha);
+    const { claims } = await cred.user.getIdTokenResult();
+    if (claims.role !== 'admin') {
+      await signOut(auth);
+      return { sucesso: false, erro: 'Esta conta não tem permissão de administrador.' };
     }
+    return { sucesso: true };
+  } catch (err: any) {
+    return { sucesso: false, erro: traduzErroAuth(err?.code || '') };
+  }
+}
+
+/** Encerra a sessão do Firebase Auth. */
+export async function encerrarSessao(): Promise<void> {
+  try {
+    await signOut(auth);
+  } catch {}
+}
+
+/**
+ * Cria ou atualiza a conta de acesso de um lojista (somente admin).
+ *
+ * A senha passa a viver no Firebase Auth, não mais num campo do Firestore —
+ * antes ela era gravada em texto puro num documento de leitura pública.
+ * Deixe `senha` vazia ao editar para manter a senha atual.
+ */
+export async function provisionarAcessoLojista(
+  email: string,
+  senha: string,
+  lojaId: string
+): Promise<{ sucesso: boolean; erro?: string }> {
+  try {
+    const fn = httpsCallable<
+      { email: string; senha?: string; lojaId: string },
+      { sucesso: boolean; uid: string }
+    >(functions, 'provisionarLojista');
+    const { data } = await fn({
+      email: email.toLowerCase().trim(),
+      senha: senha?.trim() || undefined,
+      lojaId,
+    });
     return { sucesso: data.sucesso };
   } catch (err: any) {
-    return { sucesso: false, erro: err?.message || 'Falha ao autenticar administrador.' };
+    return { sucesso: false, erro: err?.message || 'Falha ao criar o acesso do lojista.' };
   }
 }
 
@@ -570,9 +626,12 @@ export async function alternarStatusFinanceiroLojista(id: string, novoStatus: 'a
 }
 
 /**
- * Autentica o lojista via Cloud Function `autenticarLojista` — a comparação de
- * senha acontece no servidor (Admin SDK), e o campo `senha` nunca trafega de
- * volta para o navegador.
+ * Autentica o lojista pelo Firebase Auth.
+ *
+ * A senha é validada pelo próprio Firebase — o campo `senha` do Firestore não
+ * é mais usado para login e existe apenas como resquício do cadastro antigo.
+ * A loja à qual o usuário pertence vem da custom claim `lojaId`, que é a mesma
+ * informação que o firestore.rules usa para liberar o acesso aos dados dela.
  */
 export async function autenticarLojista(email: string, pass: string): Promise<{
   sucesso: boolean;
@@ -580,19 +639,47 @@ export async function autenticarLojista(email: string, pass: string): Promise<{
   erro?: string;
 }> {
   try {
-    const fn = httpsCallable<
-      { email: string; senha: string },
-      { sucesso: boolean; lojista?: LojistaFirestoreData; token?: string }
-    >(functions, 'autenticarLojista');
-    const { data } = await fn({ email: email.toLowerCase().trim(), senha: pass.trim() });
-    if (data.sucesso && data.token) {
-      // Estabelece uma sessão real do Firebase Auth (custom claims role=lojista
-      // + lojaId), usada pelas regras do Firestore para restringir o acesso.
-      await signInWithCustomToken(auth, data.token);
+    const cred = await signInWithEmailAndPassword(auth, email.toLowerCase().trim(), pass);
+    const { claims } = await cred.user.getIdTokenResult();
+
+    if (claims.role === 'admin') {
+      await signOut(auth);
+      return { sucesso: false, erro: 'Esta é uma conta de administrador. Use o acesso administrativo.' };
     }
-    return { sucesso: data.sucesso, lojista: data.lojista };
+
+    const lojaId = typeof claims.lojaId === 'string' ? claims.lojaId : null;
+    if (!lojaId) {
+      await signOut(auth);
+      return {
+        sucesso: false,
+        erro: 'Esta conta ainda não está vinculada a uma loja. Fale com o administrador.',
+      };
+    }
+
+    const snap = await getDoc(doc(db, 'lojistas', lojaId));
+    if (!snap.exists()) {
+      await signOut(auth);
+      return { sucesso: false, erro: 'A loja vinculada a esta conta não foi encontrada.' };
+    }
+
+    const data = snap.data();
+    return {
+      sucesso: true,
+      lojista: {
+        id: snap.id,
+        nome: data.nome || snap.id,
+        slug: data.slug || snap.id,
+        email: data.email || email,
+        ativo: data.ativo !== false,
+        statusFinanceiro: data.statusFinanceiro || data.financeiro?.status || 'adimplente',
+        financeiro: data.financeiro,
+        layout: data.layout,
+        regras: data.regras,
+        criadoEm: data.criadoEm,
+      },
+    };
   } catch (err: any) {
-    return { sucesso: false, erro: err?.message || 'E-mail ou senha incorretos. Verifique suas credenciais de lojista.' };
+    return { sucesso: false, erro: traduzErroAuth(err?.code || '') };
   }
 }
 

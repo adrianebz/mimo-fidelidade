@@ -9,6 +9,7 @@ import {
   salvarLojistaFirestore,
   excluirLojistaFirestore,
   alternarStatusFinanceiroLojista,
+  provisionarAcessoLojista,
   LojistaFirestoreData,
   MASTER_ADMIN_EMAIL
 } from '../../services/mimoWalletService.js';
@@ -118,10 +119,12 @@ export const AdminContas: React.FC<AdminContasProps> = ({
 
     setIsSaving(true);
     try {
+      // A senha NÃO é gravada no Firestore: o acesso vive no Firebase Auth
+      // (ver provisionarAcessoLojista logo abaixo). O documento do lojista tem
+      // leitura pública — guardar senha aqui a expunha para qualquer visitante.
       await salvarLojistaFirestore(docId, {
         nome: formData.nome.trim(),
         email: formData.email.toLowerCase().trim(),
-        senha: formData.senha.trim(),
         ativo: true,
         statusFinanceiro: formData.statusFinanceiro,
         financeiro: {
@@ -148,11 +151,25 @@ export const AdminContas: React.FC<AdminContasProps> = ({
         },
       });
 
-      showToast(
-        modalMode === 'create'
-          ? `Lojista "${formData.nome}" cadastrado com sucesso no Firebase!`
-          : `Credenciais e dados de "${formData.nome}" atualizados no Firebase!`
+      // Cria/atualiza a conta de acesso no Firebase Auth com as claims da loja.
+      // Ao editar sem informar senha, a senha atual é preservada.
+      const acesso = await provisionarAcessoLojista(
+        formData.email,
+        formData.senha,
+        docId
       );
+
+      if (!acesso.sucesso) {
+        showToast(
+          `Dados salvos, mas o acesso não pôde ser criado: ${acesso.erro}. O lojista ainda não conseguirá entrar.`
+        );
+      } else {
+        showToast(
+          modalMode === 'create'
+            ? `Lojista "${formData.nome}" cadastrado e acesso liberado!`
+            : `Dados de "${formData.nome}" atualizados com sucesso!`
+        );
+      }
       setModalOpen(false);
       await carregarLojistas();
     } catch (err: any) {
