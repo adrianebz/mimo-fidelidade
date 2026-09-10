@@ -22,6 +22,53 @@ function verificaPin(pinInformado, pinGravado) {
   return hash === pinGravado;
 }
 
+const FN_BASE = () =>
+  `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net`;
+
+/**
+ * Monta a definição da loyaltyClass (identidade visual da loja na carteira).
+ *
+ * Usada em dois lugares: pelo trigger sincronizarClasse (que cria/atualiza a
+ * classe via API) e dentro do próprio JWT de "Salvar na Wallet" — incluí-la no
+ * JWT é o que garante que o link funcione mesmo se a chamada de API tiver
+ * falhado, porque aí o Google cria a classe no momento em que o cliente salva.
+ */
+function montarLoyaltyClass(loja, slug, versao, classId) {
+  const design = loja.design || null;
+  const meta = design?.stamps?.total || loja.regras?.meta || 10;
+  const bgColor = design?.colors?.background || loja.layout?.corFundo || '#141416';
+  const nomePrograma = design?.brand?.tagline || loja.layout?.nomePrograma || 'Programa de Fidelidade Digital';
+  const nomeLoja = design?.brand?.storeName || loja.nome || 'Minha Loja';
+
+  return {
+    id: classId,
+    issuerName: nomePrograma,
+    programName: nomeLoja,
+    localizedIssuerName: { defaultValue: { language: 'pt-BR', value: nomePrograma } },
+    localizedProgramName: { defaultValue: { language: 'pt-BR', value: nomeLoja } },
+    programLogo: {
+      sourceUri: { uri: `${FN_BASE()}/getLogo?lojaId=${slug}&v=${versao}` },
+      contentDescription: {
+        defaultValue: { language: 'pt-BR', value: `Logo ${nomeLoja}` },
+      },
+    },
+    heroImage: {
+      sourceUri: { uri: `${FN_BASE()}/generateBanner?lojaId=${slug}&selos=0&meta=${meta}&v=${versao}` },
+      contentDescription: {
+        defaultValue: { language: 'pt-BR', value: `Cartela de selos ${nomeLoja}` },
+      },
+    },
+    hexBackgroundColor: bgColor,
+    accountNameLabel: 'CLIENTE VIP',
+    accountIdLabel: 'CÓDIGO DO CARTÃO',
+    rewardsTierLabel: 'STATUS',
+    countryCode: 'BR',
+    reviewStatus: 'UNDER_REVIEW',
+    allowMultipleUsersPerObject: true,
+    multipleDevicesAndHoldersAllowedStatus: 'multipleHolders',
+  };
+}
+
 /**
  * Monta o objeto de fidelidade na Google Wallet e gera o link assinado JWT
  * Totalmente personalizado com dados do cliente (nome, email, aniversário, QR, selos) e do lojista (loja, prêmio, regras, banner)
@@ -159,14 +206,22 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
     console.warn('Wallet API sync bypass (aguardando aprovação de Issuer no Google Pay Console):', err.message);
   }
 
-  // Gera o token JWT RS256 para adicionar à carteira
+  // Gera o token JWT RS256 para adicionar à carteira.
+  //
+  // A definição da CLASSE vai junto com o objeto no payload de propósito: a
+  // versão da classe muda a cada publicação no Estúdio e, se a chamada de API
+  // que cria essa nova classe falhar, o objeto apontaria para uma classe
+  // inexistente e o botão "Adicionar à Carteira" quebraria com 404. Mandando a
+  // classe no JWT, o próprio Google a cria na hora em que o cliente salva.
   const saCredentials = SA();
+  const loyaltyClass = montarLoyaltyClass(loja, slugClean, versao, classId);
   const claims = {
     iss: saCredentials.client_email,
     aud: 'google',
     typ: 'savetowallet',
     origins: ['https://mimo-fidelidade.web.app', 'http://localhost:5173'],
     payload: {
+      loyaltyClasses: [loyaltyClass],
       loyaltyObjects: [obj]
     },
   };
@@ -206,33 +261,7 @@ exports.sincronizarClasse = onDocumentWritten(
     const versao = loja.layout?.versao || loja.wallet?.versao || 'v3';
     const classId = loja.wallet?.classId || `${ISSUER_ID}.${slug}_${versao}`;
 
-    const payload = {
-      id: classId,
-      issuerName: loja.layout?.nomePrograma || ' ',
-      programName: loja.nome || 'Minha Loja',
-      programLogo: {
-        sourceUri: { 
-          uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/getLogo?lojaId=${slug}&v=${versao}`
-        },
-        contentDescription: {
-          defaultValue: { language: 'pt-BR', value: `Logo ${loja.nome || 'Mimo Fidelidade'}` }
-        }
-      },
-      heroImage: {
-        sourceUri: { uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slug}&selos=0&v=${versao}` },
-        contentDescription: {
-          defaultValue: { language: 'pt-BR', value: 'Cartela de Selos MIMO Fidelidade' }
-        }
-      },
-      hexBackgroundColor: loja.layout?.corFundo || '#141416',
-      accountNameLabel: 'CLIENTE VIP',
-      accountIdLabel: 'CÓDIGO DO CARTÃO',
-      rewardsTierLabel: 'STATUS',
-      countryCode: 'BR',
-      reviewStatus: 'UNDER_REVIEW',
-      allowMultipleUsersPerObject: true,
-      multipleDevicesAndHoldersAllowedStatus: 'multipleHolders',
-    };
+    const payload = montarLoyaltyClass(loja, slug, versao, classId);
 
     try {
       try {
