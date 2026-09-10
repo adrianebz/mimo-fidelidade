@@ -50,6 +50,155 @@ function circlePath(ctx, cx, cy, r) {
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
 }
 
+/**
+ * Caminho do selo conforme o formato escolhido pelo lojista.
+ * 'circle' | 'rounded' | 'square' — precisa casar com StampShape no cliente.
+ */
+function shapePath(ctx, shape, cx, cy, r) {
+  if (shape === 'square' || shape === 'rounded') {
+    const size = r * 1.82;
+    const x = cx - size / 2;
+    const y = cy - size / 2;
+    const radius = shape === 'rounded' ? r * 0.5 : 0;
+    ctx.beginPath();
+    if (radius > 0 && typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, size, size, radius);
+    } else {
+      ctx.rect(x, y, size, size);
+    }
+    return;
+  }
+  circlePath(ctx, cx, cy, r);
+}
+
+/** Elipse via transformação (pureimage não tem ellipse() confiável). */
+function ellipsePath(ctx, cx, cy, rx, ry) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(rx, ry);
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, Math.PI * 2);
+  ctx.restore();
+}
+
+/**
+ * Desenha um dígito (0-9) como vetor.
+ *
+ * O ambiente das Cloud Functions não tem fonte instalada e o pureimage exige
+ * registrar um TTF para usar fillText — desenhar os dígitos à mão evita essa
+ * dependência e garante que o número do selo apareça no cartão real.
+ */
+function drawDigit(ctx, digit, cx, cy, size, color) {
+  const h = size;
+  const w = size * 0.62;
+  const X = (n) => cx + n * w;
+  const Y = (n) => cy + n * h;
+
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(1.5, size * 0.17);
+
+  const strokeEllipse = (ecx, ecy, erx, ery) => {
+    ellipsePath(ctx, ecx, ecy, erx, ery);
+    ctx.stroke();
+  };
+
+  switch (String(digit)) {
+    case '0':
+      strokeEllipse(cx, cy, w * 0.42, h * 0.48);
+      break;
+    case '1':
+      ctx.beginPath();
+      ctx.moveTo(X(-0.22), Y(-0.28));
+      ctx.lineTo(X(0.02), Y(-0.48));
+      ctx.lineTo(X(0.02), Y(0.48));
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(X(-0.24), Y(0.48));
+      ctx.lineTo(X(0.28), Y(0.48));
+      ctx.stroke();
+      break;
+    case '2':
+      ctx.beginPath();
+      ctx.arc(cx, Y(-0.22), w * 0.4, Math.PI * 0.95, Math.PI * 2.1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(X(0.4), Y(-0.12));
+      ctx.lineTo(X(-0.36), Y(0.48));
+      ctx.lineTo(X(0.4), Y(0.48));
+      ctx.stroke();
+      break;
+    case '3':
+      ctx.beginPath();
+      ctx.arc(cx, Y(-0.24), w * 0.38, Math.PI * 1.1, Math.PI * 0.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, Y(0.22), w * 0.42, Math.PI * 1.5, Math.PI * 0.9);
+      ctx.stroke();
+      break;
+    case '4':
+      ctx.beginPath();
+      ctx.moveTo(X(0.16), Y(0.48));
+      ctx.lineTo(X(0.16), Y(-0.48));
+      ctx.lineTo(X(-0.38), Y(0.16));
+      ctx.lineTo(X(0.42), Y(0.16));
+      ctx.stroke();
+      break;
+    case '5':
+      ctx.beginPath();
+      ctx.moveTo(X(0.34), Y(-0.46));
+      ctx.lineTo(X(-0.26), Y(-0.46));
+      ctx.lineTo(X(-0.3), Y(-0.02));
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, Y(0.16), w * 0.42, Math.PI * 1.42, Math.PI * 0.82);
+      ctx.stroke();
+      break;
+    case '6':
+      ctx.beginPath();
+      ctx.arc(cx, Y(0.16), w * 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(X(0.3), Y(-0.46));
+      ctx.lineTo(X(-0.28), Y(0.02));
+      ctx.stroke();
+      break;
+    case '7':
+      ctx.beginPath();
+      ctx.moveTo(X(-0.36), Y(-0.46));
+      ctx.lineTo(X(0.38), Y(-0.46));
+      ctx.lineTo(X(-0.08), Y(0.48));
+      ctx.stroke();
+      break;
+    case '8':
+      strokeEllipse(cx, Y(-0.24), w * 0.34, h * 0.24);
+      strokeEllipse(cx, Y(0.22), w * 0.42, h * 0.26);
+      break;
+    case '9':
+      ctx.beginPath();
+      ctx.arc(cx, Y(-0.18), w * 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(X(0.32), Y(-0.02));
+      ctx.lineTo(X(-0.16), Y(0.48));
+      ctx.stroke();
+      break;
+    default:
+      break;
+  }
+}
+
+/** Escreve um número inteiro (1, 2, … 12) centrado em (cx, cy). */
+function drawNumber(ctx, value, cx, cy, size, color) {
+  const digits = String(Math.max(0, Math.floor(value)));
+  const digitW = size * 0.62;
+  const spacing = digitW * 1.12;
+  const startX = cx - ((digits.length - 1) * spacing) / 2;
+  for (let i = 0; i < digits.length; i++) {
+    drawDigit(ctx, digits[i], startX + i * spacing, cy, size, color);
+  }
+}
+
 /** Caminho de estrela genérico (usado para 'star', 'sparkle' e o badge do prêmio) */
 function starPath(ctx, cx, cy, outerR, innerR, points) {
   ctx.beginPath();
@@ -69,7 +218,7 @@ function starPath(ctx, cx, cy, outerR, innerR, points) {
  * Desenha a base "medalha" (moeda dourada) atrás de um selo preenchido.
  * Usada tanto para os ícones vetoriais quanto para imagens customizadas (como fundo).
  */
-function drawMedallionBase(ctx, cx, cy, r, accentHex, dim) {
+function drawMedallionBase(ctx, cx, cy, r, accentHex, dim, shape = 'circle') {
   // NOTA: pureimage's ctx.restore() só restaura _clip e _transform — NÃO restaura
   // globalAlpha/fillStyle/strokeStyle. Por isso o alpha é sempre salvo/restaurado
   // manualmente aqui (e em todas as funções abaixo), senão "vaza" para os próximos
@@ -78,32 +227,40 @@ function drawMedallionBase(ctx, cx, cy, r, accentHex, dim) {
   if (dim) ctx.globalAlpha = 0.35;
 
   ctx.fillStyle = darken(accentHex, 0.55);
-  circlePath(ctx, cx, cy, r);
+  shapePath(ctx, shape, cx, cy, r);
   ctx.fill();
 
   ctx.fillStyle = accentHex;
-  circlePath(ctx, cx, cy, r * 0.86);
+  shapePath(ctx, shape, cx, cy, r * 0.86);
   ctx.fill();
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = Math.max(1, r * 0.05);
-  circlePath(ctx, cx, cy, r * 0.7);
-  ctx.stroke();
 
   ctx.globalAlpha = prevAlpha;
 }
 
 /** Anel vazio (selo ainda não conquistado) */
-function drawEmptySlot(ctx, cx, cy, r) {
-  ctx.save();
-  circlePath(ctx, cx, cy, r);
-  ctx.fillStyle = 'rgba(255,255,255,0.045)';
+function drawEmptySlot(ctx, cx, cy, r, inkHex = '#000000', shape = 'circle', panelHex = null) {
+  // A borda é feita com dois preenchimentos concêntricos em vez de stroke:
+  // roundRect + stroke no pureimage fecha o contorno errado e deforma o selo.
+  shapePath(ctx, shape, cx, cy, r);
+  ctx.fillStyle = withAlpha(inkHex, 0.26);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  ctx.lineWidth = Math.max(1.5, r * 0.06);
-  circlePath(ctx, cx, cy, r);
-  ctx.stroke();
-  ctx.restore();
+
+  shapePath(ctx, shape, cx, cy, r * 0.9);
+  ctx.fillStyle = panelHex ? panelHex : withAlpha(inkHex, 0.1);
+  ctx.fill();
+
+  if (panelHex) {
+    // Leve escurecimento interno para o slot não sumir dentro do painel
+    shapePath(ctx, shape, cx, cy, r * 0.9);
+    ctx.fillStyle = withAlpha(inkHex, 0.12);
+    ctx.fill();
+  }
+}
+
+/** Converte hex + alpha em rgba() (pureimage aceita string rgba no fillStyle). */
+function withAlpha(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function drawCookie(ctx, cx, cy, r, color) {
@@ -284,11 +441,15 @@ function drawStarBadge(ctx, cx, cy, r, accentHex, dim) {
 module.exports = {
   STAMP_ICON_KEYS,
   darken,
+  withAlpha,
   contrastIconColor,
   drawMedallionBase,
   drawEmptySlot,
   drawStampGlyph,
   drawGiftIcon,
   drawStarBadge,
+  drawDigit,
+  drawNumber,
+  shapePath,
   starPath,
 };

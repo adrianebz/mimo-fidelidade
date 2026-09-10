@@ -306,14 +306,17 @@ export async function publicarIdentidadeVisual(
 ): Promise<{ sucesso: boolean; message: string; heroUrl?: string; logoUrl?: string; classId?: string }> {
   const slug = (lojaSlug || 'minha-loja').toLowerCase().trim();
   const slugClean = slug.replace(/[^a-z0-9_-]/g, '_');
-  const versao = String(Date.now());
+  // Aceita a versão de quem chamou (o Estúdio precisa que o JSON do design, o
+  // classId e as URLs de imagem carreguem exatamente a mesma versão).
+  const versao = config?.versao ? String(config.versao) : String(Date.now());
   const classId = `${WALLET_ISSUER_ID}.${slugClean}_${versao}`;
 
   // 1. URLs base para os endpoints dinâmicos na Cloud Function (Hero e Logo)
   // O banner e o logo agora são gerados/servidos on-the-fly para não depender de Storage inativo
   const baseUrl = `https://us-central1-mimo-2d6eb.cloudfunctions.net`;
+  const metaSelos = Number(config?.meta) > 0 ? Number(config.meta) : 10;
   const logoUrl = `${baseUrl}/getLogo?lojaId=${slugClean}&v=${versao}`;
-  const heroUrl = `${baseUrl}/generateBanner?lojaId=${slugClean}&selos=0&v=${versao}`;
+  const heroUrl = `${baseUrl}/generateBanner?lojaId=${slugClean}&selos=0&meta=${metaSelos}&v=${versao}`;
 
   // 2. Extração segura dos arquivos em Base64 (Data URIs)
   const logoBase64 = config.storeLogoImage && config.storeLogoImage.startsWith('data:image') ? config.storeLogoImage : null;

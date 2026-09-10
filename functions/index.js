@@ -926,12 +926,27 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
     if (!docSnap.exists) return res.status(404).send('Not found');
     const lojaData = docSnap.data() || {};
     const layout = lojaData.layout || {};
-    const bgColor = layout.corFundo || '#141416';
-    const accentColor = layout.accentColor || '#FFC82C';
-    const stampIconKey = (layout.stampIcon || 'cookie').toLowerCase();
+    const design = lojaData.design || null;
+
+    // O JSON do Estúdio (`design`) é a fonte de verdade; `layout` é o espelho
+    // legado, mantido para lojas que ainda não passaram pelo Estúdio.
+    const bgColor = design?.colors?.background || layout.corFundo || '#141416';
+    const accentColor = design?.colors?.accent || layout.accentColor || '#FFC82C';
+    const stampInk = design?.colors?.stampInk || layout.stampInk || bgColor;
+    const stampIconKey = String(design?.stamps?.iconKey || layout.stampIcon || 'cookie').toLowerCase();
+    const stampShape = String(design?.stamps?.shape || layout.stampShape || 'circle').toLowerCase();
+    const stampFill = String(design?.stamps?.fill || layout.stampFill || 'icon').toLowerCase();
+    const showNumbersOnEmpty =
+      design?.stamps?.showNumbersOnEmpty ?? layout.showNumbersOnEmpty ?? false;
+    const rewardColor = design?.reward?.color || layout.rewardColor || accentColor;
+    const rewardIconKey = String(design?.reward?.iconKey || layout.rewardIcon || 'gift').toLowerCase();
+
     const meta = Math.max(
       1,
-      Math.min(30, parseInt(req.query.meta || String(lojaData.regras?.meta || 10), 10) || 10)
+      Math.min(
+        30,
+        parseInt(req.query.meta || String(design?.stamps?.total || lojaData.regras?.meta || 10), 10) || 10
+      )
     );
 
     const img = PImage.make(1032, 336);
@@ -941,44 +956,58 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, 1032, 336);
 
-    // Painel interno sutil (profundidade, sem "engolir" a cor de destaque dos selos)
+    // Painel interno na cor de destaque, como a cartela do cartão de referência.
+    // Só preenchimento: roundRect + stroke no pureimage fecha o traço errado e
+    // deixa uma diagonal atravessando o painel.
     const margin = 20;
-    if (ctx.roundRect) {
-      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    if (typeof ctx.roundRect === 'function') {
+      ctx.fillStyle = accentColor;
       ctx.beginPath();
-      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 24);
+      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 28);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 24);
-      ctx.stroke();
+    } else {
+      ctx.fillStyle = accentColor;
+      ctx.fillRect(margin, margin, 1032 - margin * 2, 336 - margin * 2);
     }
 
     // Grade adapta-se à meta de selos configurada pelo lojista (não é fixa em 10)
-    const cols = Math.min(5, meta);
+    const colsConfig = Number(design?.stamps?.columns || layout.stampColumns || 5);
+    const cols = Math.min(Math.max(3, colsConfig), meta);
     const rows = Math.ceil(meta / cols);
-    const radius = rows > 1 ? 50 : 56;
-    const usableW = 1032 - margin * 2 - 60;
-    const usableH = 336 - margin * 2 - 40;
-    const spacingX = cols > 1 ? usableW / (cols - 1) : 0;
-    const spacingY = rows > 1 ? usableH / (rows - 1) : 0;
-    const originX = 1032 / 2 - ((cols - 1) * spacingX) / 2;
-    const originY = 336 / 2 - ((rows - 1) * spacingY) / 2;
+    // Raio limitado pelo espaço disponível, para caber qualquer combinação de
+    // meta × colunas sem os selos vazarem para fora do painel.
+    const padding = margin + 16;
+    const maxByWidth = (1032 - padding * 2) / (cols * 2.35);
+    const maxByHeight = (336 - padding * 2) / (rows * 2.35);
+    const radius = Math.max(18, Math.min(52, maxByWidth, maxByHeight));
+
+    const innerLeft = padding + radius;
+    const innerRight = 1032 - padding - radius;
+    const innerTop = padding + radius;
+    const innerBottom = 336 - padding - radius;
+
+    const spacingX = cols > 1 ? (innerRight - innerLeft) / (cols - 1) : 0;
+    const spacingY = rows > 1 ? (innerBottom - innerTop) / (rows - 1) : 0;
+    const originX = cols > 1 ? innerLeft : 1032 / 2;
+    const originY = rows > 1 ? innerTop : 336 / 2;
 
     let stampBitmap = null;
     let rewardBitmap = null;
 
-    const b64Stamp = layout.stampImageBase64 || layout.stampImage;
+    const b64Stamp =
+      design?.stamps?.imageDataUrl || layout.stampImageBase64 || layout.stampImage;
     if (b64Stamp && b64Stamp.startsWith('data:image')) {
       stampBitmap = await loadBase64Image(b64Stamp);
     }
-    const b64Reward = layout.rewardStampImageBase64 || layout.rewardStampImage;
+    const b64Reward =
+      design?.reward?.imageDataUrl || layout.rewardStampImageBase64 || layout.rewardStampImage;
     if (b64Reward && b64Reward.startsWith('data:image')) {
       rewardBitmap = await loadBase64Image(b64Reward);
     }
 
-    const iconColor = walletIcons.contrastIconColor(accentColor);
+    // O conteúdo do selo é desenhado sobre a cor de destaque, então a tinta
+    // precisa contrastar com ela (e não com o fundo do cartão).
+    const inkColor = stampInk || walletIcons.contrastIconColor(accentColor);
 
     for (let i = 0; i < meta; i++) {
       const rowIdx = Math.floor(i / cols);
@@ -986,45 +1015,51 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
       const cx = originX + colIdx * spacingX;
       const cy = originY + rowIdx * spacingY;
 
+      const position = i + 1;
       const isFilled = i < selos;
       const isLast = i === meta - 1;
 
       if (isLast) {
-        // Selo especial do prêmio: usa a imagem customizada do lojista se houver,
-        // senão um ícone de presente vetorial — nunca um círculo vazio.
-        walletIcons.drawMedallionBase(ctx, cx, cy, radius, accentColor, !isFilled);
+        // Selo do prêmio: imagem própria do lojista, senão o ícone escolhido.
+        walletIcons.drawMedallionBase(ctx, cx, cy, radius, rewardColor, !isFilled, stampShape);
         const prevAlpha = ctx.globalAlpha;
         if (!isFilled) ctx.globalAlpha = 0.4;
 
         if (rewardBitmap) {
           ctx.save();
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius - 8, 0, Math.PI * 2);
+          walletIcons.shapePath(ctx, stampShape, cx, cy, radius - 8);
           ctx.clip();
           ctx.drawImage(rewardBitmap, cx - (radius - 8), cy - (radius - 8), (radius - 8) * 2, (radius - 8) * 2);
           ctx.restore();
+        } else if (rewardIconKey === 'gift') {
+          walletIcons.drawGiftIcon(ctx, cx, cy, radius, inkColor);
         } else {
-          walletIcons.drawGiftIcon(ctx, cx, cy, radius, iconColor);
+          walletIcons.drawStampGlyph(ctx, rewardIconKey, cx, cy, radius * 0.62, inkColor);
         }
         ctx.globalAlpha = prevAlpha;
 
-        walletIcons.drawStarBadge(ctx, cx + radius * 0.72, cy - radius * 0.72, 19, accentColor, !isFilled);
+        walletIcons.drawStarBadge(ctx, cx + radius * 0.72, cy - radius * 0.72, 19, rewardColor, !isFilled);
       } else if (isFilled) {
-        // Selo preenchido: imagem customizada do lojista, ou o ícone vetorial
-        // escolhido (cookie/coffee/star/heart/sparkle/fire/coin) sobre a medalha dourada.
-        walletIcons.drawMedallionBase(ctx, cx, cy, radius, accentColor, false);
-        if (stampBitmap) {
+        // Selo conquistado: fundo na cor do cartão (contraste com o painel) e,
+        // dentro dele, o número, o ícone ou a imagem — conforme o Estúdio.
+        walletIcons.drawMedallionBase(ctx, cx, cy, radius, bgColor, false, stampShape);
+
+        if (stampFill === 'image' && stampBitmap) {
           ctx.save();
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius - 10, 0, Math.PI * 2);
+          walletIcons.shapePath(ctx, stampShape, cx, cy, radius - 10);
           ctx.clip();
           ctx.drawImage(stampBitmap, cx - (radius - 10), cy - (radius - 10), (radius - 10) * 2, (radius - 10) * 2);
           ctx.restore();
+        } else if (stampFill === 'number') {
+          walletIcons.drawNumber(ctx, position, cx, cy, radius * 0.66, accentColor);
         } else {
-          walletIcons.drawStampGlyph(ctx, stampIconKey, cx, cy, radius * 0.62, iconColor);
+          walletIcons.drawStampGlyph(ctx, stampIconKey, cx, cy, radius * 0.62, accentColor);
         }
       } else {
-        walletIcons.drawEmptySlot(ctx, cx, cy, radius);
+        walletIcons.drawEmptySlot(ctx, cx, cy, radius, inkColor, stampShape, accentColor);
+        if (showNumbersOnEmpty) {
+          walletIcons.drawNumber(ctx, position, cx, cy, radius * 0.58, walletIcons.withAlpha(inkColor, 0.55));
+        }
       }
     }
 
