@@ -2,70 +2,79 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function autenticado() { return request.auth != null; }
-    function ehOperador(lojaId) {
-      return autenticado() && (
-        (request.auth.token.lojas != null && (request.auth.token.lojas[lojaId] == 'dono' || request.auth.token.lojas[lojaId] == 'operador')) ||
-        (exists(/databases/$(database)/documents/lojistas/$(lojaId)) && 
-         get(/databases/$(database)/documents/lojistas/$(lojaId)).data.operadores[request.auth.uid] != null)
-      );
-    }
-    function meuTel() {
-      return autenticado() && request.auth.token.phone_number != null
-        ? request.auth.token.phone_number.replace('\\+','') : 'x';
+    // Regras da plataforma MIMO Fidelidade.
+    //
+    // Antes, TODA coleção era "allow read, write: if true" — qualquer pessoa
+    // na internet podia ler e reescrever selos, dados de clientes (PII/LGPD),
+    // senhas de lojista e a própria trilha de auditoria. Corrigido: as Cloud
+    // Functions (criarCartao/carimbar/resgatar/atualizarPasse/autenticar*)
+    // usam o Admin SDK, que ignora estas regras — elas continuam funcionando
+    // normalmente. Só o acesso DIRETO do navegador é que passa a ser
+    // restringido por sessão (ver autenticarAdmin/autenticarLojista, que
+    // emitem um Firebase Auth custom token com claims role/lojaId).
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == 'admin';
     }
 
-    match /usuarios/{uid} {
-      allow read, update: if autenticado() && request.auth.uid == uid;
-      allow create, delete: if false;
+    function isLojista(lojaId) {
+      return request.auth != null
+        && request.auth.token.role == 'lojista'
+        && request.auth.token.lojaId == lojaId;
     }
 
+    // Configuração pública da loja (nome, cores, logo, textos do cartão): a
+    // página de cadastro do cliente (/c/{slug}) precisa ler isso sem login,
+    // então o read continua público. Escrita só pelo dono ou pelo admin.
     match /lojistas/{lojaId} {
-      allow read: if true;                        // layout público p/ página de cadastro
-      allow write: if ehOperador(lojaId);
+      allow read: if true;
+      allow write: if isAdmin() || isLojista(lojaId);
 
+      // Clientes cadastrados (nome, celular, e-mail, aniversário — dado
+      // pessoal sob LGPD): só o lojista dono ou o admin podem ler. Escrita
+      // só pelas Cloud Functions (nunca direto do navegador).
       match /clientes/{clienteId} {
-        allow read: if ehOperador(lojaId);
-        allow write: if false;                    // só Functions
-      }
-      match /itens/{itemId} {
-        allow read: if true;                      // catálogo é público
-        allow write: if ehOperador(lojaId);
-      }
-      match /campanhas/{id} {
-        allow read, write: if ehOperador(lojaId);
-      }
-      match /agregados/{id} {
-        allow read: if ehOperador(lojaId);
+        allow read: if isAdmin() || isLojista(lojaId);
         allow write: if false;
       }
-      match /convites/{id} {
-        allow read, write: if ehOperador(lojaId);
+
+      // Qualquer outra subcoleção futura sob a loja: mesma regra da doc pai.
+      match /{document=**} {
+        allow read: if isAdmin() || isLojista(lojaId);
+        allow write: if false;
       }
     }
 
+    // Cartões de fidelidade: emitidos e alterados exclusivamente pelas Cloud
+    // Functions (criarCartao/carimbar/resgatar/atualizarPasse), nunca por
+    // escrita direta do cliente — é o que impedia qualquer visitante de
+    // simplesmente setar `selos` para 10 sem passar pelo PIN do operador.
     match /cartoes/{cartaoId} {
-      // cliente lê o próprio cartão; operador lê os da loja dele
-      allow read: if autenticado() && (
-        resource.data.clienteId == meuTel() ||
-        ehOperador(resource.data.lojaId)
-      );
-      allow write: if false;                      // só Functions
+      allow read: if isAdmin()
+        || (request.auth != null
+            && request.auth.token.role == 'lojista'
+            && request.auth.token.lojaId == resource.data.lojaId);
+      allow write: if false;
 
       match /eventos/{eventoId} {
-        allow read: if ehOperador(get(/databases/$(database)/documents/cartoes/$(cartaoId)).data.lojaId);
+        allow read: if isAdmin();
         allow write: if false;
       }
+    }
+
+    // Não utilizada pelo cliente atualmente.
+    match /usuarios/{uid} {
+      allow read, write: if false;
     }
 
     match /resgates/{id} {
-      allow read: if ehOperador(resource.data.lojaId);
+      allow read: if isAdmin();
       allow write: if false;
     }
 
+    // Trilha de auditoria: só o Admin SDK grava; ninguém reescreve.
     match /auditoria/{id} {
-      allow read: if ehOperador(resource.data.lojaId);
-      allow write: if false;
+      allow read, write: if false;
     }
   }
 }

@@ -1,6 +1,3 @@
-const { GoogleAuth } = require('google-auth-library');
-const jwt = require('jsonwebtoken');
-
 const ISSUER_ID = process.env.WALLET_ISSUER_ID || '3388000000023184117';
 
 const fs = require('fs');
@@ -31,6 +28,7 @@ const SA = () => {
 const BASE = 'https://walletobjects.googleapis.com/walletobjects/v1';
 
 async function client() {
+  const { GoogleAuth } = require('google-auth-library');
   const auth = new GoogleAuth({
     credentials: SA(),
     scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
@@ -49,6 +47,7 @@ async function api(method, path, body) {
   }
 }
 
+const jwt = require('jsonwebtoken');
 module.exports = {
   api,
   ISSUER_ID,

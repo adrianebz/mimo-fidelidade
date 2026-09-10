@@ -1,11 +1,12 @@
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { authenticator } = require('otplib');
-const { parsePhoneNumber } = require('libphonenumber-js');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { Readable } = require('stream');
+const { authenticator } = require('otplib');
 const { api, ISSUER_ID, SA, jwt } = require('./wallet');
+const walletIcons = require('./wallet-icons');
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -23,40 +24,128 @@ function verificaPin(pinInformado, pinGravado) {
 
 /**
  * Monta o objeto de fidelidade na Google Wallet e gera o link assinado JWT
+ * Totalmente personalizado com dados do cliente (nome, email, aniversário, QR, selos) e do lojista (loja, prêmio, regras, banner)
  */
-async function gerarSaveUrl(snap, loja) {
-  const c = snap.data();
-  const classId = loja.wallet?.classId || `${ISSUER_ID}.${loja.slug || loja.nome.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-  const objectId = c.wallet?.objectId || `${ISSUER_ID}.${c.clienteId}-c${c.ciclo || 1}`;
+async function gerarSaveUrl(snap, loja, clienteParam) {
+  const c = snap.data() || {};
+  let cliente = clienteParam;
+
+  if (!cliente && (!c.clienteNome || !c.clienteEmail)) {
+    try {
+      const db = admin.firestore();
+      const cliDoc = await db.doc(`lojistas/${c.lojaId}/clientes/${c.clienteId}`).get();
+      if (cliDoc.exists) {
+        cliente = cliDoc.data();
+      }
+    } catch (e) {
+      console.warn('Busca de cliente no Firestore:', e.message);
+    }
+  }
+
+  const clienteNome = c.clienteNome || cliente?.nome || 'Cliente VIP';
+  const clienteEmail = c.clienteEmail || cliente?.email || '';
+  const clienteAniv = c.clienteAniversario || cliente?.aniversario || '';
+  const clienteCelular = c.clienteCelular || cliente?.celular || c.clienteId || '';
+
+  const versao = loja.layout?.versao || loja.wallet?.versao || 'v3';
+  const slugClean = (loja.slug || loja.nome?.toLowerCase().replace(/[^a-z0-9_-]/g, '_') || 'loja');
+  const classId = loja.wallet?.classId || `${ISSUER_ID}.${slugClean}_${versao}`;
+  const objectId = c.wallet?.objectId || `${ISSUER_ID}.${slugClean}_${c.clienteId}_c${c.ciclo || 1}`;
+  const meta = c.meta || loja.regras?.meta || 10;
+  const selos = c.selos || 0;
+  const faltam = Math.max(0, meta - selos);
+  const premio = loja.layout?.premio || loja.regras?.premio || '1 Mimo Especial';
+  const validadeDias = loja.layout?.validadeDias || loja.regras?.validadeDias || 30;
+  const instrucaoResgate = loja.layout?.instrucaoResgate || 'Here you will see your of stamps';
+  const passCode = `MIMO-PASS-${snap.id.slice(-4).toUpperCase()}`;
+
+  const textModulesData = [
+    {
+      id: 'cliente_vip',
+      header: 'CLIENTE VIP',
+      body: clienteNome,
+    },
+    {
+      id: 'premio_mimo',
+      header: 'PRÊMIO DO MIMO',
+      body: premio,
+    },
+    {
+      id: 'progresso_ciclo',
+      header: 'PROGRESSO DO CICLO',
+      body: c.status === 'completo'
+        ? `Cartão completo! (${selos}/${meta} selos). Retire seu mimo no caixa.`
+        : `${selos} de ${meta} selos acumulados (Faltam ${faltam} selos)`,
+    },
+    {
+      id: 'regras_resgate',
+      header: 'INSTRUÇÕES NO BALCÃO',
+      body: `${instrucaoResgate} Validade de ${validadeDias} dias após completar os ${meta} selos.`,
+    },
+  ];
 
   const obj = {
     id: objectId,
     classId: classId,
     state: 'ACTIVE',
     accountId: c.clienteId,
-    accountName: loja.layout?.nomePrograma || loja.nome || 'Mimo Fidelidade',
+    accountName: clienteNome,
     loyaltyPoints: {
-      label: 'Selos',
-      balance: { string: `${c.selos || 0} de ${c.meta || 10}` },
-    },
-    textModulesData: [
-      { header: 'Seu prêmio', body: loja.layout?.premio || '1 Mimo Especial', id: 'premio' },
-      {
-        header: c.status === 'completo' ? 'Status' : 'Faltam',
-        body: c.status === 'completo' ? 'Cartão completo! Retire seu mimo no caixa.' : `${(c.meta || 10) - (c.selos || 0)} selo(s)`,
-        id: 'faltam'
+      localizedLabel: {
+        defaultValue: {
+          language: 'pt-BR',
+          value: 'Cartão Mimo'
+        }
       },
-    ],
-    rotatingBarcode: {
+      balance: { string: `${selos} / ${meta} SELOS` },
+    },
+    heroImage: {
+      sourceUri: {
+        uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slugClean}&selos=${selos}&meta=${meta}&v=${versao}`
+      },
+      contentDescription: {
+        defaultValue: {
+          language: 'pt-BR',
+          value: `Progresso do Ciclo: ${selos} de ${meta} selos`
+        }
+      }
+    },
+    textModulesData,
+    infoModuleData: {
+      labelValueRows: [
+        {
+          columns: [
+            { label: 'CLIENTE VIP', value: clienteNome },
+            { label: 'CÓDIGO DO CARTÃO', value: c.clienteId || clienteCelular }
+          ]
+        },
+        {
+          columns: [
+            { label: 'STATUS', value: c.status === 'completo' ? 'Completo' : 'Ativo' },
+            { label: 'PRÊMIO', value: premio }
+          ]
+        }
+      ]
+    },
+    barcode: {
       type: 'QR_CODE',
-      valuePattern: `MIMO:${snap.id}:{totp_value_0}`,
-      totpDetails: {
-        algorithm: 'TOTP_SHA1',
-        periodMillis: '30000',
-        parameters: [{ key: Buffer.from(c.totpSecret).toString('base64'), valueLength: 6 }],
-      },
-      alternateText: 'Mostre este QR no caixa para carimbar',
+      value: `MIMO:${snap.id}:${c.totpSecret ? authenticator.generate(c.totpSecret) : '8821'}`,
+      alternateText: passCode,
     },
+    linksModuleData: {
+      uris: [
+        {
+          kind: 'walletobjects#uri',
+          uri: 'https://mimo-fidelidade.web.app',
+          description: 'Acessar Portal do Clube MIMO'
+        },
+        {
+          kind: 'walletobjects#uri',
+          uri: `https://mimo-fidelidade.web.app/c/${loja.slug || snap.id.split('_')[0]}`,
+          description: 'Ver Minha Cartela & Regulamento'
+        }
+      ]
+    }
   };
 
   try {
@@ -78,7 +167,7 @@ async function gerarSaveUrl(snap, loja) {
     typ: 'savetowallet',
     origins: ['https://mimo-fidelidade.web.app', 'http://localhost:5173'],
     payload: {
-      loyaltyObjects: [{ id: obj.id }]
+      loyaltyObjects: [obj]
     },
   };
 
@@ -86,7 +175,6 @@ async function gerarSaveUrl(snap, loja) {
   try {
     token = jwt.sign(claims, saCredentials.private_key, { algorithm: 'RS256' });
   } catch {
-    // Se a chave não for um certificado RSA válido ainda (em fase de testes pré-console)
     token = jwt.sign(claims, 'mimo_secret_key_demo');
   }
 
@@ -101,21 +189,49 @@ exports.sincronizarClasse = onDocumentWritten(
   { document: 'lojistas/{lojaId}', secrets: ['WALLET_SA_KEY'] },
   async (event) => {
     const loja = event.data?.after?.data();
+    const lojaAntes = event.data?.before?.data();
     if (!loja) return;
 
-    const slug = loja.slug || event.params.lojaId;
-    const classId = `${ISSUER_ID}.${slug}`;
+    // Guarda contra auto-disparo infinito: esta function grava 'wallet.classId' e
+    // 'wallet.classSincronizadaEm' no próprio documento que a disparou. Sem esta
+    // checagem, cada gravação reativa a function indefinidamente (e reprocessa o
+    // PATCH de todos os cartões do lojista a cada ciclo).
+    const versaoAntes = lojaAntes?.layout?.versao || lojaAntes?.wallet?.versao;
+    const versaoDepois = loja.layout?.versao || loja.wallet?.versao;
+    const layoutMudou = JSON.stringify(lojaAntes?.layout || {}) !== JSON.stringify(loja.layout || {});
+    const jaSincronizada = !!lojaAntes && versaoAntes === versaoDepois && !layoutMudou;
+    if (jaSincronizada) return;
+
+    const slug = (loja.slug || event.params.lojaId || 'loja').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const versao = loja.layout?.versao || loja.wallet?.versao || 'v3';
+    const classId = loja.wallet?.classId || `${ISSUER_ID}.${slug}_${versao}`;
 
     const payload = {
       id: classId,
-      issuerName: loja.nome || 'Mimo Fidelidade',
-      programName: loja.layout?.nomePrograma || 'Clube de Fidelidade',
-      programLogo: loja.layout?.logoUrl ? { sourceUri: { uri: loja.layout.logoUrl } } : undefined,
-      heroImage: loja.layout?.heroUrl ? { sourceUri: { uri: loja.layout.heroUrl } } : undefined,
+      issuerName: loja.layout?.nomePrograma || ' ',
+      programName: loja.nome || 'Minha Loja',
+      programLogo: {
+        sourceUri: { 
+          uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/getLogo?lojaId=${slug}&v=${versao}`
+        },
+        contentDescription: {
+          defaultValue: { language: 'pt-BR', value: `Logo ${loja.nome || 'Mimo Fidelidade'}` }
+        }
+      },
+      heroImage: {
+        sourceUri: { uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slug}&selos=0&v=${versao}` },
+        contentDescription: {
+          defaultValue: { language: 'pt-BR', value: 'Cartela de Selos MIMO Fidelidade' }
+        }
+      },
       hexBackgroundColor: loja.layout?.corFundo || '#141416',
+      accountNameLabel: 'CLIENTE VIP',
+      accountIdLabel: 'CÓDIGO DO CARTÃO',
+      rewardsTierLabel: 'STATUS',
+      countryCode: 'BR',
       reviewStatus: 'UNDER_REVIEW',
-      accountNameLabel: 'Cliente',
-      rewardsTierLabel: 'Prêmio',
+      allowMultipleUsersPerObject: true,
+      multipleDevicesAndHoldersAllowedStatus: 'multipleHolders',
     };
 
     try {
@@ -131,9 +247,111 @@ exports.sincronizarClasse = onDocumentWritten(
         'wallet.classSincronizadaEm': admin.firestore.FieldValue.serverTimestamp(),
       });
       console.log(`Classe ${classId} sincronizada com sucesso na Google Wallet.`);
+
+      // Propagar o novo design para TODOS os cartões existentes do lojista
+      const db = admin.firestore();
+      const cartoesSnap = await db.collection('cartoes').where('lojaId', '==', loja.slug || event.params.lojaId).get();
+      
+      const patchPromises = cartoesSnap.docs.map(async (cartaoDoc) => {
+        const c = cartaoDoc.data();
+        if (!c.wallet?.objectId) return;
+        const metaAtual = c.meta || loja.regras?.meta || 10;
+        
+        const objPatch = {
+          heroImage: {
+            sourceUri: {
+              uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slug}&selos=${c.selos || 0}&v=${Date.now()}`
+            },
+            contentDescription: {
+              defaultValue: {
+                language: 'pt-BR',
+                value: `Progresso do Ciclo: ${c.selos || 0} de ${metaAtual} selos`
+              }
+            }
+          }
+        };
+        try {
+          await api('PATCH', `/loyaltyObject/${c.wallet.objectId}`, objPatch);
+        } catch (e) {
+          console.warn(`Erro ao fazer PATCH do objeto retroativo ${c.wallet.objectId}:`, e.message);
+        }
+      });
+      
+      await Promise.all(patchPromises);
+      console.log(`Todos os cartões do lojista ${slug} atualizados com o novo design.`);
+
     } catch (err) {
       console.warn('Erro ao sincronizar classe com Wallet API:', err.message);
     }
+  }
+);
+
+/**
+ * Autenticação do administrador master. A senha NUNCA fica no cliente — este
+ * endpoint compara contra o secret MIMO_ADMIN_PASS_HASH (hash SHA-256), que
+ * precisa ser configurado com `firebase functions:secrets:set MIMO_ADMIN_PASS_HASH`
+ * usando uma senha NOVA (a anterior foi exposta publicamente no bundle do
+ * cliente e deve ser considerada comprometida).
+ */
+exports.autenticarAdmin = onCall(
+  { secrets: ['MIMO_ADMIN_PASS_HASH'], region: 'southamerica-east1' },
+  async (req) => {
+    const { email, senha } = req.data || {};
+    if (!email || !senha) {
+      throw new HttpsError('invalid-argument', 'E-mail e senha são obrigatórios.');
+    }
+    const adminEmail = (process.env.MIMO_ADMIN_EMAIL || 'adrianebezerra1605@gmail.com').toLowerCase();
+    const adminHash = process.env.MIMO_ADMIN_PASS_HASH;
+    if (!adminHash) {
+      throw new HttpsError('failed-precondition', 'Login administrativo ainda não configurado (secret MIMO_ADMIN_PASS_HASH ausente).');
+    }
+    const senhaHash = crypto.createHash('sha256').update(String(senha)).digest('hex');
+    if (String(email).toLowerCase().trim() !== adminEmail || senhaHash !== adminHash) {
+      throw new HttpsError('permission-denied', 'E-mail ou senha incorretos.');
+    }
+    // Emite uma sessão real do Firebase Auth (custom claims), para que
+    // firestore.rules possa diferenciar admin de visitante anônimo.
+    const token = await admin.auth().createCustomToken('mimo-admin', { role: 'admin' });
+    return { sucesso: true, token };
+  }
+);
+
+/**
+ * Autenticação do lojista. Roda com privilégios de Admin SDK (não depende das
+ * regras do Firestore) e nunca devolve o campo `senha` ao cliente — antes essa
+ * comparação era feita no navegador, expondo a senha de TODOS os lojistas para
+ * quem inspecionasse o bundle/chamadas de rede.
+ */
+exports.autenticarLojista = onCall(
+  { region: 'southamerica-east1' },
+  async (req) => {
+    const { email, senha } = req.data || {};
+    if (!email || !senha) {
+      throw new HttpsError('invalid-argument', 'E-mail e senha são obrigatórios.');
+    }
+    const db = admin.firestore();
+    const emailLimpo = String(email).toLowerCase().trim();
+    const snap = await db.collection('lojistas').where('email', '==', emailLimpo).get();
+
+    let match = null;
+    snap.forEach((d) => {
+      const data = d.data();
+      if (verificaPin(senha, data.senha)) {
+        match = { id: d.id, ...data };
+      }
+    });
+
+    if (!match) {
+      throw new HttpsError('permission-denied', 'E-mail ou senha incorretos.');
+    }
+    delete match.senha;
+    // Emite uma sessão real do Firebase Auth com o lojaId em custom claims,
+    // para que firestore.rules consiga restringir leituras/escritas ao dono.
+    const token = await admin.auth().createCustomToken(`lojista-${match.id}`, {
+      role: 'lojista',
+      lojaId: match.slug || match.id,
+    });
+    return { sucesso: true, lojista: match, token };
   }
 );
 
@@ -153,7 +371,8 @@ exports.criarCartao = onCall(
       throw new HttpsError('invalid-argument', 'Nome, celular e e-mail são obrigatórios.');
     }
 
-    const tel = parsePhoneNumber(celular, 'BR');
+    const { parsePhoneNumber } = require('libphonenumber-js');
+      const tel = parsePhoneNumber(celular, 'BR');
     if (!tel || !tel.isValid()) {
       throw new HttpsError('invalid-argument', 'Número de celular brasileiro inválido.');
     }
@@ -210,7 +429,7 @@ exports.criarCartao = onCall(
 
     if (!existente.empty) {
       const cartaoSnap = existente.docs[0];
-      const saveUrl = await gerarSaveUrl(cartaoSnap, loja);
+      const saveUrl = await gerarSaveUrl(cartaoSnap, loja, clientePayload);
       return {
         cartaoId: cartaoSnap.id,
         jaExistia: true,
@@ -224,13 +443,22 @@ exports.criarCartao = onCall(
     // 3. Cria novo cartão (Ciclo 1)
     const ciclo = 1;
     const cartaoId = `${lojaId}_${clienteId}_${ciclo}`;
-    const objectId = `${ISSUER_ID}.${clienteId}-c${ciclo}`;
+    const versaoLoja = loja.layout?.versao || loja.wallet?.versao || 'v3';
+    const slugLojaClean = (loja.slug || lojaId).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    // Mesmo formato usado em gerarSaveUrl/sincronizarClasse — objectId/classId precisam
+    // bater exatamente, senão o objeto aponta para uma classe que não existe na Wallet.
+    const objectId = `${ISSUER_ID}.${slugLojaClean}_${clienteId}_c${ciclo}`;
+    const classId = loja.wallet?.classId || `${ISSUER_ID}.${slugLojaClean}_${versaoLoja}`;
     const totpSecret = authenticator.generateSecret();
     const meta = loja.regras?.meta || 10;
 
     const cartaoData = {
       lojaId,
       clienteId,
+      clienteNome: nome.trim(),
+      clienteEmail: email.trim().toLowerCase(),
+      clienteAniversario: aniversario || null,
+      clienteCelular: tel.number,
       ciclo,
       selos: 0,
       meta,
@@ -238,7 +466,7 @@ exports.criarCartao = onCall(
       totpSecret,
       wallet: {
         objectId,
-        classId: loja.wallet?.classId || `${ISSUER_ID}.${loja.slug || lojaId}`,
+        classId,
         ultimaSync: admin.firestore.FieldValue.serverTimestamp(),
       },
       ultimoSeloEm: null,
@@ -248,7 +476,7 @@ exports.criarCartao = onCall(
     await db.doc(`cartoes/${cartaoId}`).set(cartaoData);
 
     const novoSnap = await db.doc(`cartoes/${cartaoId}`).get();
-    const saveUrl = await gerarSaveUrl(novoSnap, loja);
+    const saveUrl = await gerarSaveUrl(novoSnap, loja, clientePayload);
 
     return {
       cartaoId,
@@ -312,22 +540,28 @@ exports.carimbar = onCall(
         throw new HttpsError('failed-precondition', 'Operação bloqueada: o lojista possui pendência financeira. Regularize a assinatura para registrar selos.');
       }
 
-      // Validação de operador e PIN
-      const uid = req.auth?.uid || 'operador-balcao';
-      const operador = loja.operadores?.[uid] || Object.values(loja.operadores || {})[0] || { nome: 'Operador Balcão', pin: '1234' };
-
-      if (pin && operador.pin) {
-        if (!verificaPin(pin, operador.pin)) {
-          throw new HttpsError('permission-denied', 'PIN do operador incorreto.');
-        }
+      // Validação de operador e PIN — o PIN é OBRIGATÓRIO e identifica o operador
+      // (não confiamos mais em req.auth?.uid nem no "primeiro operador da loja",
+      // que permitiam carimbar sem nenhuma credencial).
+      if (!pin) {
+        throw new HttpsError('invalid-argument', 'PIN do operador é obrigatório para registrar o selo.');
       }
+      const operadoresMap = loja.operadores || {};
+      const operadorEntry = Object.entries(operadoresMap).find(([, op]) => verificaPin(pin, op?.pin));
+      if (!operadorEntry) {
+        throw new HttpsError('permission-denied', 'PIN do operador incorreto.');
+      }
+      const [uid, operador] = operadorEntry;
 
-      // Validação do TOTP rotativo da Google Wallet se o código estiver presente
+      // Validação do TOTP rotativo, quando o código vem da leitura do QR da Wallet.
+      // NÃO bloqueia o carimbo: a Google Wallet não suporta atualizar a imagem do
+      // barcode em tempo real sem Smart Tap/NFC, então um código "desatualizado" é
+      // esperado — a barreira de segurança real é o PIN do operador acima.
       if (codigo && cartao.totpSecret) {
-        authenticator.options = { window: 1, step: 30 };
+        authenticator.options = { window: 2, step: 30 };
         const valido = authenticator.verify({ token: codigo, secret: cartao.totpSecret });
         if (!valido) {
-          throw new HttpsError('permission-denied', 'Código QR expirado. Peça ao cliente para reabrir o cartão na carteira.');
+          console.warn(`TOTP desatualizado para o cartão ${cartaoId} (aceito mesmo assim; PIN já validou o operador).`);
         }
       }
 
@@ -355,6 +589,19 @@ exports.carimbar = onCall(
         status: novoStatus,
         ultimoSeloEm: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Espelha o progresso no doc do cliente (usado pelo CRM do lojista)
+      if (cartao.clienteId) {
+        tx.set(
+          db.doc(`lojistas/${lojaId}/clientes/${cartao.clienteId}`),
+          {
+            stamps: novosSelos,
+            status: novoStatus,
+            lastVisit: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
 
       // Registro do evento imutável de auditoria
       const eventoRef = cartaoRef.collection('eventos').doc();
@@ -395,28 +642,66 @@ exports.atualizarPasse = onDocumentWritten(
       const lojaDoc = await db.doc(`lojistas/${depois.lojaId}`).get();
       const loja = lojaDoc.data() || {};
 
+      const clienteNome = depois.clienteNome || 'Cliente VIP';
+      const meta = depois.meta || 10;
+      const selos = depois.selos || 0;
+      const faltam = Math.max(0, meta - selos);
+      const premio = loja.layout?.premio || loja.regras?.premio || '1 Mimo Especial';
+      const validadeDias = loja.layout?.validadeDias || loja.regras?.validadeDias || 30;
+      const instrucaoResgate = loja.layout?.instrucaoResgate || 'Apresente o QR Code no balcão a cada compra para creditar o selo.';
+
+      const textModulesData = [
+        {
+          id: 'regras_resgate',
+          header: 'INSTRUÇÕES NO BALCÃO',
+          body: `${instrucaoResgate} Validade de ${validadeDias} dias após completar os 10 selos.`,
+        }
+      ];
+
       await api('PATCH', `/loyaltyObject/${depois.wallet?.objectId}`, {
         loyaltyPoints: {
-          label: 'Selos',
-          balance: { string: `${depois.selos} de ${depois.meta}` },
-        },
-        textModulesData: [
-          { header: 'Seu prêmio', body: loja.layout?.premio || '1 Mimo Especial', id: 'premio' },
-          {
-            header: depois.status === 'completo' ? 'Parabéns!' : 'Faltam',
-            body: depois.status === 'completo' ? 'Cartão completo! Retire seu mimo no caixa.' : `${depois.meta - depois.selos} selo(s)`,
-            id: 'faltam',
+          localizedLabel: {
+            defaultValue: {
+              language: 'pt-BR',
+              value: 'Cartão Mimo'
+            }
           },
-        ],
+          balance: { string: `${selos} / ${meta} SELOS` },
+        },
+        heroImage: {
+          sourceUri: {
+            uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${loja.slug || depois.lojaId}&selos=${selos}&meta=${meta}&v=${Date.now()}`
+          },
+          contentDescription: {
+            defaultValue: { language: 'pt-BR', value: `Progresso: ${selos} de ${meta} selos` }
+          }
+        },
+        textModulesData,
+        infoModuleData: {
+          labelValueRows: [
+            {
+              columns: [
+                { label: 'CLIENTE VIP', value: clienteNome },
+                { label: 'CÓDIGO DO CARTÃO', value: depois.clienteId || depois.clienteCelular || 'MIMO-VIP' }
+              ]
+            },
+            {
+              columns: [
+                { label: 'STATUS', value: depois.status === 'completo' ? 'Completo' : 'Ativo' },
+                { label: 'PRÊMIO', value: premio }
+              ]
+            }
+          ]
+        },
         messages: [{
           header: depois.status === 'completo' ? 'Mimo liberado!' : 'Novo selo adicionado',
           body: depois.status === 'completo'
-            ? `Parabéns! Seu prêmio está liberado: ${loja.layout?.premio}`
-            : `Você acumulou ${depois.selos} de ${depois.meta} selos no ${loja.layout?.nomePrograma || loja.nome}!`,
-          id: `msg-${depois.selos}-${Date.now()}`,
+            ? `Parabéns! Seu prêmio está liberado: ${premio}`
+            : `Você acumulou ${selos} de ${meta} selos no ${loja.layout?.nomePrograma || loja.nome}!`,
+          id: `msg-${selos}-${Date.now()}`,
         }],
       });
-      console.log(`Passe do cartão ${event.params.cartaoId} atualizado no Google Wallet.`);
+      console.log(`Passe do cartão ${event.params.cartaoId} atualizado no Google Wallet com dados completos.`);
     } catch (err) {
       console.warn('Erro ao atualizar objeto no Google Wallet:', err.message);
     }
@@ -448,12 +733,15 @@ exports.resgatar = onCall(
       const lojaDoc = await tx.get(db.doc(`lojistas/${lojaId}`));
       const loja = lojaDoc.data() || {};
 
-      const uid = req.auth?.uid || 'operador-balcao';
-      const operador = loja.operadores?.[uid] || Object.values(loja.operadores || {})[0] || { nome: 'Operador Balcão', pin: '1234' };
-
-      if (pin && operador.pin && !verificaPin(pin, operador.pin)) {
+      if (!pin) {
+        throw new HttpsError('invalid-argument', 'PIN do operador é obrigatório para resgatar o prêmio.');
+      }
+      const operadoresMap = loja.operadores || {};
+      const operadorEntry = Object.entries(operadoresMap).find(([, op]) => verificaPin(pin, op?.pin));
+      if (!operadorEntry) {
         throw new HttpsError('permission-denied', 'PIN incorreto.');
       }
+      const [uid, operador] = operadorEntry;
 
       const premio = loja.layout?.premio || '1 Mimo Especial';
 
@@ -478,6 +766,19 @@ exports.resgatar = onCall(
         status: 'ativo',
         ultimoResgateEm: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Espelha o progresso no doc do cliente (usado pelo CRM do lojista)
+      if (cartao.clienteId) {
+        tx.set(
+          db.doc(`lojistas/${lojaId}/clientes/${cartao.clienteId}`),
+          {
+            stamps: 0,
+            status: 'ativo',
+            lastVisit: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
 
       // 3. Evento no histórico do cartão
       const eventoRef = cartaoRef.collection('eventos').doc();
@@ -553,3 +854,186 @@ exports.campanhaAniversario = onSchedule(
     }
   }
 );
+
+// Auxiliar para converter Base64 em Stream para o PureImage
+function bufferToStream(buffer) {
+  const stream = new Readable();
+  stream.push(buffer);
+  stream.push(null);
+  return stream;
+}
+
+// Endpoint Dinâmico 1: Retorna o Logotipo da Loja a partir do Base64 salvo no Firestore
+exports.getLogo = onRequest({ cors: true, memory: '512MiB' }, async (req, res) => {
+  const lojaId = req.query.lojaId;
+  if (!lojaId) return res.status(400).send('lojaId required');
+  try {
+    const db = admin.firestore();
+    const docSnap = await db.doc(`lojistas/${lojaId}`).get();
+    if (!docSnap.exists) return res.status(404).send('Not found');
+    const layout = docSnap.data().layout || {};
+    if (layout.logoBase64) {
+      const b64Data = layout.logoBase64.split(',')[1] || layout.logoBase64;
+      const buffer = Buffer.from(b64Data, 'base64');
+      res.setHeader('Content-Type', layout.logoBase64.includes('jpeg') ? 'image/jpeg' : 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache no Wallet
+      return res.send(buffer);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+  // Fallback genérico se falhar
+  res.redirect('https://mimo-fidelidade.web.app/logos/loja.jpg');
+});
+
+async function loadBase64Image(dataUrl) {
+  if (!dataUrl || !dataUrl.includes('base64,')) return null;
+  try {
+    const PImage = require('pureimage');
+    const isPng = dataUrl.includes('image/png');
+    const isJpeg = dataUrl.includes('image/jpeg') || dataUrl.includes('image/jpg');
+    if (!isPng && !isJpeg) return null;
+    
+    const b64Data = dataUrl.split(',')[1];
+    const buffer = Buffer.from(b64Data, 'base64');
+    const stream = bufferToStream(buffer);
+    
+    if (isPng) {
+      return await PImage.decodePNGFromStream(stream);
+    } else {
+      return await PImage.decodeJPEGFromStream(stream);
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar imagem base64:', err.message);
+    return null;
+  }
+}
+
+// Endpoint Dinâmico 2: Gera o Banner (Cartela de Selos) na hora usando PureImage
+// Totalmente personalizável por loja e por cliente: cor de fundo, cor de destaque,
+// ícone do selo (ou imagem customizada), ícone/imagem do prêmio do último selo e a
+// meta e o progresso REAIS daquele cartão (via query params ?selos= e ?meta=).
+exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req, res) => {
+  const PImage = require('pureimage');
+  const lojaId = req.query.lojaId;
+  const selos = Math.max(0, parseInt(req.query.selos || '0', 10));
+
+  if (!lojaId) return res.status(400).send('lojaId required');
+
+  try {
+    const db = admin.firestore();
+    const docSnap = await db.doc(`lojistas/${lojaId}`).get();
+    if (!docSnap.exists) return res.status(404).send('Not found');
+    const lojaData = docSnap.data() || {};
+    const layout = lojaData.layout || {};
+    const bgColor = layout.corFundo || '#141416';
+    const accentColor = layout.accentColor || '#FFC82C';
+    const stampIconKey = (layout.stampIcon || 'cookie').toLowerCase();
+    const meta = Math.max(
+      1,
+      Math.min(30, parseInt(req.query.meta || String(lojaData.regras?.meta || 10), 10) || 10)
+    );
+
+    const img = PImage.make(1032, 336);
+    const ctx = img.getContext('2d');
+
+    // Fundo principal na cor da loja (o mesmo hexBackgroundColor da loyaltyClass)
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, 1032, 336);
+
+    // Painel interno sutil (profundidade, sem "engolir" a cor de destaque dos selos)
+    const margin = 20;
+    if (ctx.roundRect) {
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+      ctx.beginPath();
+      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 24);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 24);
+      ctx.stroke();
+    }
+
+    // Grade adapta-se à meta de selos configurada pelo lojista (não é fixa em 10)
+    const cols = Math.min(5, meta);
+    const rows = Math.ceil(meta / cols);
+    const radius = rows > 1 ? 50 : 56;
+    const usableW = 1032 - margin * 2 - 60;
+    const usableH = 336 - margin * 2 - 40;
+    const spacingX = cols > 1 ? usableW / (cols - 1) : 0;
+    const spacingY = rows > 1 ? usableH / (rows - 1) : 0;
+    const originX = 1032 / 2 - ((cols - 1) * spacingX) / 2;
+    const originY = 336 / 2 - ((rows - 1) * spacingY) / 2;
+
+    let stampBitmap = null;
+    let rewardBitmap = null;
+
+    const b64Stamp = layout.stampImageBase64 || layout.stampImage;
+    if (b64Stamp && b64Stamp.startsWith('data:image')) {
+      stampBitmap = await loadBase64Image(b64Stamp);
+    }
+    const b64Reward = layout.rewardStampImageBase64 || layout.rewardStampImage;
+    if (b64Reward && b64Reward.startsWith('data:image')) {
+      rewardBitmap = await loadBase64Image(b64Reward);
+    }
+
+    const iconColor = walletIcons.contrastIconColor(accentColor);
+
+    for (let i = 0; i < meta; i++) {
+      const rowIdx = Math.floor(i / cols);
+      const colIdx = i % cols;
+      const cx = originX + colIdx * spacingX;
+      const cy = originY + rowIdx * spacingY;
+
+      const isFilled = i < selos;
+      const isLast = i === meta - 1;
+
+      if (isLast) {
+        // Selo especial do prêmio: usa a imagem customizada do lojista se houver,
+        // senão um ícone de presente vetorial — nunca um círculo vazio.
+        walletIcons.drawMedallionBase(ctx, cx, cy, radius, accentColor, !isFilled);
+        const prevAlpha = ctx.globalAlpha;
+        if (!isFilled) ctx.globalAlpha = 0.4;
+
+        if (rewardBitmap) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius - 8, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(rewardBitmap, cx - (radius - 8), cy - (radius - 8), (radius - 8) * 2, (radius - 8) * 2);
+          ctx.restore();
+        } else {
+          walletIcons.drawGiftIcon(ctx, cx, cy, radius, iconColor);
+        }
+        ctx.globalAlpha = prevAlpha;
+
+        walletIcons.drawStarBadge(ctx, cx + radius * 0.72, cy - radius * 0.72, 19, accentColor, !isFilled);
+      } else if (isFilled) {
+        // Selo preenchido: imagem customizada do lojista, ou o ícone vetorial
+        // escolhido (cookie/coffee/star/heart/sparkle/fire/coin) sobre a medalha dourada.
+        walletIcons.drawMedallionBase(ctx, cx, cy, radius, accentColor, false);
+        if (stampBitmap) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius - 10, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(stampBitmap, cx - (radius - 10), cy - (radius - 10), (radius - 10) * 2, (radius - 10) * 2);
+          ctx.restore();
+        } else {
+          walletIcons.drawStampGlyph(ctx, stampIconKey, cx, cy, radius * 0.62, iconColor);
+        }
+      } else {
+        walletIcons.drawEmptySlot(ctx, cx, cy, radius);
+      }
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Imutável: selos/meta/versão fazem parte da própria URL
+
+    await PImage.encodePNGToStream(img, res);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Internal error');
+  }
+});

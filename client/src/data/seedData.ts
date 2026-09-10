@@ -18,10 +18,17 @@ export interface SeedMerchantData {
   layout: {
     corFundo: string;
     corTexto: string;
+    accentColor?: string;
     logoUrl: string;
     heroUrl: string;
     nomePrograma: string;
     premio: string;
+    validadeDias?: number | string;
+    instrucaoResgate?: string;
+    stampIcon?: string;
+    stampImage?: string | null;
+    rewardStampImage?: string | null;
+    versao?: string;
   };
   regras: {
     meta: number;

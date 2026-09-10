@@ -103,7 +103,8 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
       const remaining = 30 - secondsInPeriod;
       setTotpSecondsLeft(remaining);
 
-      const code = gerarCodigoTotpAtual(enrolledResult.totpSecret || 'MIMO');
+      if (!enrolledResult.totpSecret) return;
+      const code = await gerarCodigoTotpAtual(enrolledResult.totpSecret);
       setTotpCode(code);
 
       const qrContent = `MIMO:${enrolledResult.cartaoId}:${code}`;
@@ -299,61 +300,180 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
               </p>
             </div>
 
-            {/* PRÉVIA VISUAL DO PASSE (Com TOTP rotativo idêntico à Google Wallet) */}
-            <div className="rounded-2xl p-5 border text-left relative overflow-hidden shadow-xl"
-                 style={{
-                   backgroundColor: loja.layout.corFundo || '#141416',
-                   borderColor: 'rgba(255, 255, 255, 0.15)',
-                   color: loja.layout.corTexto || '#FFFFFF'
-                 }}>
-              <div className="flex items-center justify-between mb-4">
+            {/* PRÉVIA VISUAL DO PASSE GOOGLE WALLET */}
+            <div
+              className="rounded-3xl p-5 sm:p-6 border text-left relative overflow-hidden shadow-2xl"
+              style={{
+                backgroundColor: loja.layout.corFundo || '#141416',
+                borderColor: 'rgba(255, 255, 255, 0.15)',
+                color: loja.layout.corTexto || '#FFFFFF'
+              }}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10" />
+
+              {/* Pass Header com Logo e Dados da Loja */}
+              <div className="relative z-10 flex items-start justify-between border-b border-white/10 pb-3.5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center font-bold text-sm">
-                    {loja.nome.slice(0, 2).toUpperCase()}
-                  </div>
+                  {loja.layout.logoUrl ? (
+                    <div className="h-10 w-10 rounded-xl bg-black/40 border border-white/20 p-1 flex items-center justify-center overflow-hidden shrink-0 shadow-md">
+                      <img src={loja.layout.logoUrl} alt={loja.nome} className="h-full w-full object-contain" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0 border border-amber-400/30">
+                      {loja.nome.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
                   <div>
-                    <h3 className="text-sm font-black leading-tight">{loja.nome}</h3>
-                    <span className="text-[10px] text-white/70 block">{loja.layout.nomePrograma}</span>
+                    <h3 className="text-base font-black leading-tight">{loja.nome}</h3>
+                    <span className="text-[10px] text-white/70 block uppercase font-bold tracking-wider">
+                      {loja.layout.nomePrograma || 'CARTÃO DE FIDELIDADE'}
+                    </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-white/60 block">Selos</span>
-                  <span className="text-lg font-black text-amber-400">
-                    {enrolledResult.selos} de {enrolledResult.meta}
+                  <span className="text-[9px] uppercase font-bold text-white/50 block tracking-widest">
+                    STATUS
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-400">
+                    Ativo
                   </span>
                 </div>
               </div>
 
-              {/* Grid dos 10 Selos */}
-              <div className="grid grid-cols-5 gap-2 my-4">
-                {Array.from({ length: enrolledResult.meta || 10 }).map((_, i) => {
-                  const preenchido = i < enrolledResult.selos;
-                  return (
-                    <div
-                      key={i}
-                      className={`h-11 rounded-xl flex items-center justify-center font-bold text-xs border transition-all ${
-                        preenchido
-                          ? 'bg-amber-400 text-black border-amber-300 shadow-sm shadow-amber-400/40'
-                          : 'bg-white/5 border-white/10 text-white/30'
-                      }`}
-                    >
-                      {preenchido ? '★' : i + 1}
-                    </div>
-                  );
-                })}
+              {/* Informações do Cliente VIP no Cabeçalho */}
+              <div className="relative z-10 py-3 flex items-center justify-between text-xs border-b border-white/5">
+                <div>
+                  <span className="text-[9px] uppercase font-bold text-white/40 block tracking-wider">CLIENTE VIP</span>
+                  <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[170px] block">
+                    {nome || 'Cliente VIP'}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] uppercase font-bold text-white/40 block tracking-wider">PROGRESSO</span>
+                  <span className="text-xs sm:text-sm font-black text-amber-400">
+                    {enrolledResult.selos} / {enrolledResult.meta || 10} SELOS
+                  </span>
+                </div>
               </div>
 
-              {/* Informação do Prêmio */}
-              <div className="p-2.5 rounded-xl bg-white/10 border border-white/10 text-xs mb-4">
-                <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px] mb-0.5">
-                  <Gift className="w-3.5 h-3.5" />
-                  <span>Prêmio do Cartão:</span>
+              {/* ═══════════════════════════════════════════════════════════════
+                  CARTELA DE SELOS GOOGLE WALLET (2x5 GRID CIRCULAR)
+                 ═══════════════════════════════════════════════════════════════ */}
+              <div className="relative z-10 my-3.5 p-4 rounded-2xl bg-[#18181b] border border-white/10 shadow-inner">
+                <div className="grid grid-cols-5 gap-2.5 justify-items-center">
+                  {Array.from({ length: enrolledResult.meta || 10 }).map((_, index) => {
+                    const slotNum = index + 1;
+                    const isFilled = slotNum <= enrolledResult.selos;
+                    const is10th = slotNum === 10;
+
+                    if (is10th) {
+                      // 10º Selo: Selo Especial do Prêmio com Estrela Dourada
+                      return (
+                        <div key={slotNum} className="relative flex items-center justify-center">
+                          <div className="absolute -top-1 -right-1 z-10 w-4 h-4 rounded-full bg-white text-amber-500 flex items-center justify-center text-[9px] shadow-md font-bold leading-none border border-amber-200">
+                            ⭐
+                          </div>
+                          <div
+                            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center p-1 shadow-lg transition-transform ${
+                              isFilled
+                                ? 'text-black shadow-amber-400/40 ring-2 ring-amber-300 scale-105'
+                                : 'text-black shadow-amber-400/20 border-2 border-white/60'
+                            }`}
+                            style={{ backgroundColor: loja.layout.accentColor || '#FFC82C' }}
+                          >
+                            {loja.layout.rewardStampImage ? (
+                              <img
+                                src={loja.layout.rewardStampImage}
+                                alt="Prêmio"
+                                className="w-full h-full object-contain rounded-full"
+                              />
+                            ) : (
+                              <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-center leading-[1.05] tracking-tight text-zinc-950 line-clamp-3 select-none px-0.5">
+                                {loja.layout.premio || 'BROWNIE COOKIE GRÁTIS'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (isFilled) {
+                      // Selos 1 a 9 Preenchidos: Medalha Dourada
+                      return (
+                        <div
+                          key={slotNum}
+                          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full p-[2px] bg-gradient-to-b from-[#FFE57F] via-[#F59E0B] to-[#92400E] shadow-md shadow-amber-500/25 flex items-center justify-center transition-transform"
+                        >
+                          <div className="w-full h-full rounded-full bg-gradient-to-tr from-[#78350F] via-[#B45309] to-[#D97706] border border-[#FEF3C7]/50 flex items-center justify-center text-amber-100 shadow-inner overflow-hidden">
+                            {loja.layout.stampImage ? (
+                              <img
+                                src={loja.layout.stampImage}
+                                alt="Selo"
+                                className="w-full h-full object-cover rounded-full"
+                              />
+                            ) : loja.layout.stampIcon === 'cookie' ? (
+                              <span className="text-base select-none filter drop-shadow">🍪</span>
+                            ) : loja.layout.stampIcon === 'coffee' ? (
+                              <span className="text-base select-none filter drop-shadow">☕</span>
+                            ) : loja.layout.stampIcon === 'star' ? (
+                              <span className="text-base select-none filter drop-shadow">⭐</span>
+                            ) : loja.layout.stampIcon === 'heart' ? (
+                              <span className="text-base select-none filter drop-shadow">❤️</span>
+                            ) : loja.layout.stampIcon === 'sparkle' ? (
+                              <span className="text-base select-none filter drop-shadow">✨</span>
+                            ) : loja.layout.stampIcon === 'fire' ? (
+                              <span className="text-base select-none filter drop-shadow">🔥</span>
+                            ) : (
+                              <span className="text-base select-none filter drop-shadow">🪙</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Selos 1 a 9 Vazios
+                    return (
+                      <div
+                        key={slotNum}
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border border-white/15 bg-white/5 flex items-center justify-center transition-all"
+                      >
+                        <span className="text-[10px] font-semibold text-white/20 select-none">
+                          {slotNum}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-                <p className="text-white text-xs font-semibold">{loja.layout.premio}</p>
+              </div>
+
+              {/* ═══════════════════════════════════════════════════════════════
+                  CARDS INFORMATIVOS GOOGLE WALLET
+                 ═══════════════════════════════════════════════════════════════ */}
+              <div className="space-y-2 relative z-10 text-left my-2">
+                {/* Card 1: Stamps */}
+                <div className="bg-[#242428] rounded-xl p-3 border border-white/5">
+                  <span className="text-[10px] text-zinc-400 font-medium block">Stamps</span>
+                  <p className="text-xs font-semibold text-white mt-0.5 leading-snug">
+                    {loja.layout.instrucaoResgate || 'Here you will see your of stamps'}
+                  </p>
+                </div>
+
+                {/* Card 2: Selos */}
+                <div className="bg-[#242428] rounded-xl p-3 border border-white/5 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 font-medium block">Selos</span>
+                    <p className="text-xs font-bold text-white mt-0.5">
+                      {enrolledResult.selos}/{enrolledResult.meta || 10}
+                    </p>
+                  </div>
+                  <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20 uppercase tracking-wider">
+                    Google Wallet
+                  </span>
+                </div>
               </div>
 
               {/* QR Code Rotativo da Google Wallet */}
-              <div className="bg-white rounded-2xl p-4 text-center text-zinc-900 space-y-2">
+              <div className="bg-white rounded-2xl p-4 text-center text-zinc-900 space-y-2 mt-3 relative z-10">
                 <div className="flex items-center justify-between text-[11px] font-bold text-zinc-600 px-1">
                   <span>QR Rotativo Dinâmico</span>
                   <span className="flex items-center gap-1 text-emerald-600">
@@ -366,10 +486,10 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
                   <img
                     src={qrCodeDataUrl}
                     alt="QR Code do Passe"
-                    className="w-48 h-48 mx-auto rounded-lg shadow-sm"
+                    className="w-44 h-44 mx-auto rounded-lg shadow-sm"
                   />
                 ) : (
-                  <div className="w-48 h-48 mx-auto bg-zinc-100 rounded-lg flex items-center justify-center text-xs text-zinc-400 animate-pulse">
+                  <div className="w-44 h-44 mx-auto bg-zinc-100 rounded-lg flex items-center justify-center text-xs text-zinc-400 animate-pulse">
                     Gerando QR seguro...
                   </div>
                 )}

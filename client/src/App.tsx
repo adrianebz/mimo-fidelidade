@@ -7,7 +7,7 @@ import { SitePrecos } from './pages/site/SitePrecos.js';
 import { SiteContato } from './pages/site/SiteContato.js';
 import { SiteLogin } from './pages/site/SiteLogin.js';
 import { SitePainel } from './pages/site/SitePainel.js';
-
+import { AdminContas } from './pages/site/AdminContas.js';
 import { CustomerEnrollSlug } from './pages/CustomerEnrollSlug.js';
 
 export const App: React.FC = () => {
@@ -18,11 +18,22 @@ export const App: React.FC = () => {
     (window as any).isNativeApp === true
   );
 
-  // Website active tab: inicio, como-funciona, precos, contato, login, painel, cliente-slug
+  const [selectedStoreSlug, setSelectedStoreSlug] = useState<string>(() => {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem('mimo_active_lojista') || 'nox-dessert-club';
+    }
+    return 'nox-dessert-club';
+  });
+
+  // Website active tab: inicio, como-funciona, precos, contato, login, painel, admin, cliente-slug
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [siteTab, setSiteTab] = useState<SiteNavTab>(() => {
-    if (isAppMode) return 'painel';
     const path = window.location.pathname;
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('mimo_admin_session') === 'true' && (path.includes('admin') || path.includes('login'))) {
+      return 'admin';
+    }
+    if (isAppMode) return 'painel';
+    if (path.includes('admin')) return 'admin';
     if (path.includes('painel')) return 'painel';
     if (path.includes('login') || path.includes('entrar')) return 'login';
     if (path.includes('como-funciona')) return 'como-funciona';
@@ -33,7 +44,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (currentPath.startsWith('/c/')) return;
-    if (isAppMode && siteTab !== 'painel' && siteTab !== 'login') {
+    if (isAppMode && siteTab !== 'painel' && siteTab !== 'login' && siteTab !== 'admin') {
       setSiteTab('painel');
       return;
     }
@@ -45,6 +56,7 @@ export const App: React.FC = () => {
       'contato': isAppMode ? '/painel' : '/contato',
       'login': '/login',
       'painel': '/painel',
+      'admin': '/admin',
     };
     if (window.location.pathname !== pathMap[siteTab]) {
       window.history.pushState({}, '', pathMap[siteTab]);
@@ -60,7 +72,8 @@ export const App: React.FC = () => {
       }
       const path = window.location.pathname;
       setCurrentPath(path);
-      if (path.includes('painel')) setSiteTab('painel');
+      if (path.includes('admin')) setSiteTab('admin');
+      else if (path.includes('painel')) setSiteTab('painel');
       else if (path.includes('login') || path.includes('entrar')) setSiteTab('login');
       else if (path.includes('como-funciona')) setSiteTab('como-funciona');
       else if (path.includes('precos') || path.includes('planos')) setSiteTab('precos');
@@ -84,10 +97,35 @@ export const App: React.FC = () => {
     );
   }
 
+  // Se for o painel master de administração de contas
+  if (siteTab === 'admin') {
+    return (
+      <AdminContas
+        onNavigate={(tab) => setSiteTab(tab)}
+        onSelectStore={(slug) => {
+          setSelectedStoreSlug(slug);
+          localStorage.setItem('mimo_active_lojista', slug);
+        }}
+        onLogout={() => {
+          localStorage.removeItem('mimo_admin_session');
+          setSiteTab('login');
+        }}
+      />
+    );
+  }
+
   // Se estiver em modo app (APK), garante que NUNCA renderiza a página institucional
   if (isAppMode) {
     if (siteTab === 'login') {
-      return <SiteLogin onNavigate={(tab) => setSiteTab(tab)} />;
+      return (
+        <SiteLogin
+          onNavigate={(tab) => setSiteTab(tab)}
+          onSelectStore={(slug) => {
+            setSelectedStoreSlug(slug);
+            localStorage.setItem('mimo_active_lojista', slug);
+          }}
+        />
+      );
     }
     return <SitePainel onNavigate={(tab) => setSiteTab(tab)} />;
   }
@@ -124,7 +162,13 @@ export const App: React.FC = () => {
         )}
 
         {siteTab === 'login' && (
-          <SiteLogin onNavigate={(tab) => setSiteTab(tab)} />
+          <SiteLogin
+            onNavigate={(tab) => setSiteTab(tab)}
+            onSelectStore={(slug) => {
+              setSelectedStoreSlug(slug);
+              localStorage.setItem('mimo_active_lojista', slug);
+            }}
+          />
         )}
       </main>
 

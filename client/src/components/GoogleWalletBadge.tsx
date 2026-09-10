@@ -15,7 +15,7 @@ export const GoogleWalletBadge: React.FC<GoogleWalletBadgeProps> = ({ href, onCl
     <a
       href={href}
       target="_blank"
-      rel="noopener noreferrer"
+      rel="noopener"
       onClick={onClick}
       id="btn-add-google-wallet"
       className={`group inline-flex items-center gap-3 px-6 py-3 rounded-full bg-black border border-white/20 hover:border-white/50 hover:bg-zinc-900 active:scale-95 transition-all duration-200 shadow-xl cursor-pointer select-none ${className}`}

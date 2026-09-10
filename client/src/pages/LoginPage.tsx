@@ -117,29 +117,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Logins */}
-          <div className="pt-3 border-t border-slate-100 space-y-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-              Acesso Rápido de Demonstração:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('leonam.ataide@gmail.com')}
-                className="p-2 rounded-xl border border-slate-200 hover:border-teal-400 hover:bg-teal-50/50 text-[11px] font-semibold text-slate-700 text-center transition-colors"
-              >
-                Lojista (NOX Club)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin@mimo.com.br')}
-                className="p-2 rounded-xl border border-slate-200 hover:border-teal-400 hover:bg-teal-50/50 text-[11px] font-semibold text-slate-700 text-center transition-colors"
-              >
-                Superadmin
-              </button>
-            </div>
-          </div>
         </div>
 
         <div className="text-center text-[11px] text-slate-400">

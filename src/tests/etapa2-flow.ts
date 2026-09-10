@@ -38,7 +38,7 @@ async function runEtapa2Tests() {
 
   // 2. TOTP Rotativo da Google Wallet
   console.log('\n2. Algoritmo TOTP de 6 Dígitos com Rotação de 30s');
-  const totp1 = gerarCodigoTotpAtual('SECRET_TEST');
+  const totp1 = await gerarCodigoTotpAtual('JBSWY3DPEHPK3PXP');
   assert(totp1.length === 6 && /^\d+$/.test(totp1), 'TOTP gera código numérico de 6 dígitos', totp1);
 
   // 3. Cadastro do Cliente e Emissão do Cartão (/c/{slug})

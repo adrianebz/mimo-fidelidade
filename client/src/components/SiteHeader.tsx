@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export type SiteNavTab = 'inicio' | 'como-funciona' | 'precos' | 'contato' | 'login' | 'painel';
+export type SiteNavTab = 'inicio' | 'como-funciona' | 'precos' | 'contato' | 'login' | 'painel' | 'admin';
 
 interface SiteHeaderProps {
   currentTab: SiteNavTab;

@@ -1,0 +1,214 @@
+{
+  "definicao_de_classe": {
+    "id": "3388000000023184117.fidelidade",
+    "issuerName": "Casa Nuvem",
+    "programName": "Cafés Especiais & Confeitaria Artesanal",
+    "localizedIssuerName": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Casa Nuvem"
+      }
+    },
+    "localizedProgramName": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Cafés Especiais & Confeitaria Artesanal"
+      }
+    },
+    "hexBackgroundColor": "#141416",
+    "accountNameLabel": "CLIENTE VIP",
+    "accountIdLabel": "CÓDIGO DO CARTÃO",
+    "rewardsTierLabel": "STATUS",
+    "programLogo": {
+      "sourceUri": {
+        "uri": "https://mimo-fidelidade.web.app/mimo-logo.jpg"
+      },
+      "contentDescription": {
+        "defaultValue": {
+          "language": "pt-BR",
+          "value": "Logotipo Casa Nuvem"
+        }
+      }
+    },
+    "heroImage": {
+      "sourceUri": {
+        "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+      },
+      "contentDescription": {
+        "defaultValue": {
+          "language": "pt-BR",
+          "value": "Cartela de Selos MIMO Fidelidade"
+        }
+      }
+    },
+    "countryCode": "BR",
+    "reviewStatus": "UNDER_REVIEW",
+    "allowMultipleUsersPerObject": true,
+    "multipleDevicesAndHoldersAllowedStatus": "multipleHolders"
+  },
+  "definicao_de_objeto": {
+    "id": "3388000000023184117.casa-nuvem_5511999998888_1",
+    "classId": "3388000000023184117.fidelidade",
+    "state": "ACTIVE",
+    "accountId": "5511999998888",
+    "accountName": "Lia Martins",
+    "loyaltyPoints": {
+      "balance": {
+        "string": "8 / 10 SELOS"
+      },
+      "localizedLabel": {
+        "defaultValue": {
+          "language": "pt-BR",
+          "value": "Cartão Mimo"
+        }
+      }
+    },
+    "barcode": {
+      "type": "QR_CODE",
+      "value": "MIMO:casa-nuvem_5511999998888_1:882104",
+      "alternateText": "MIMO-PASS-8821"
+    },
+    "heroImage": {
+      "sourceUri": {
+        "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+      },
+      "contentDescription": {
+        "defaultValue": {
+          "language": "pt-BR",
+          "value": "Progresso do Ciclo: 8 de 10 selos"
+        }
+      }
+    },
+    "textModulesData": [
+      {
+        "id": "cliente_vip",
+        "header": "CLIENTE VIP",
+        "body": "Lia Martins"
+      },
+      {
+        "id": "email_cliente",
+        "header": "E-MAIL CADASTRADO",
+        "body": "lia.martins@exemplo.com.br"
+      },
+      {
+        "id": "aniversario_cliente",
+        "header": "DATA DE ANIVERSÁRIO",
+        "body": "15/08"
+      },
+      {
+        "id": "celular_cliente",
+        "header": "CELULAR / WHATSAPP",
+        "body": "(11) 99999-8888"
+      },
+      {
+        "id": "premio_mimo",
+        "header": "MIMO APÓS 10 COMPRAS",
+        "body": "1 Café Filtrado Especial + Pão de Queijo Canastra"
+      },
+      {
+        "id": "progresso_ciclo",
+        "header": "PROGRESSO DO CICLO",
+        "body": "8 de 10 selos acumulados (Faltam 2 selos)"
+      },
+      {
+        "id": "status_cartao",
+        "header": "STATUS DO CARTÃO",
+        "body": "Ativo (Ciclo 1)"
+      },
+      {
+        "id": "regras_resgate",
+        "header": "INSTRUÇÃO DE RESGATE NO BALCÃO",
+        "body": "Apresente o QR Code no balcão a cada compra para creditar o selo. Recompensa válida por 30 dias após completar os 10 selos."
+      },
+      {
+        "id": "leitura_qr",
+        "header": "LEITURA DO QR CODE",
+        "body": "O lojista lê este QR code para creditar o selo no caixa."
+      }
+    ],
+    "infoModuleData": {
+      "labelValueRows": [
+        {
+          "columns": [
+            {
+              "label": "CLIENTE VIP",
+              "value": "Lia Martins"
+            },
+            {
+              "label": "STATUS",
+              "value": "Ativo"
+            }
+          ]
+        },
+        {
+          "columns": [
+            {
+              "label": "E-MAIL",
+              "value": "lia.martins@exemplo.com.br"
+            },
+            {
+              "label": "ANIVERSÁRIO",
+              "value": "15/08"
+            }
+          ]
+        },
+        {
+          "columns": [
+            {
+              "label": "PROGRESSO",
+              "value": "8 / 10 SELOS"
+            },
+            {
+              "label": "FALTAM",
+              "value": "2 selos"
+            }
+          ]
+        }
+      ]
+    },
+    "linksModuleData": {
+      "uris": [
+        {
+          "kind": "walletobjects#uri",
+          "uri": "https://mimo-fidelidade.web.app",
+          "description": "Acessar Portal do Clube MIMO"
+        },
+        {
+          "kind": "walletobjects#uri",
+          "uri": "https://mimo-fidelidade.web.app/c/casa-nuvem",
+          "description": "Ver Minha Cartela & Regulamento"
+        }
+      ]
+    }
+  },
+  "mapeamento_de_personalizacao": {
+    "nivel_lojista": {
+      "descricao": "Dados configurados pelo lojista no Estúdio de Marca MIMO",
+      "campos": {
+        "issuerName": "Nome da loja (ex: 'Casa Nuvem')",
+        "programName": "Slogan / Categoria (ex: 'Cafés Especiais & Confeitaria Artesanal')",
+        "hexBackgroundColor": "Cor de fundo (ex: '#141416')",
+        "programLogo": "Logo da loja (160x160 px, proporção 1:1, PNG transparente ou SVG)",
+        "heroImage": "Banner ilustrativo dos selos e prêmio",
+        "premio_mimo": "Título da recompensa (ex: '1 Café Filtrado Especial + Pão de Queijo Canastra')",
+        "validade": "Validade do resgate (ex: 30 dias)",
+        "regras_resgate": "Instruções de carimbo e resgate no balcão"
+      }
+    },
+    "nivel_cliente": {
+      "descricao": "Dados personalizados de cada cliente cadastrado no programa",
+      "campos": {
+        "accountName": "Nome do cliente (ex: 'Lia Martins')",
+        "accountId": "Telefone celular sanitizado E.164 (ex: '5511999998888')",
+        "email_cliente": "E-mail do cliente (ex: 'lia.martins@exemplo.com.br')",
+        "aniversario_cliente": "Data de aniversário (ex: '15/08')",
+        "celular_cliente": "Celular formatado para contato (ex: '(11) 99999-8888')",
+        "loyaltyPoints": "Saldo atual de selos e meta (ex: '8 / 10 SELOS')",
+        "progresso_ciclo": "Contagem detalhada de selos e quantidade restante",
+        "status_cartao": "Status atual do cartão (Ativo ou Completo) e número do ciclo",
+        "barcode": "QR Code individualizado com TOTP para leitura segura no balcão",
+        "alternateText": "Código de identificação do passe (ex: 'MIMO-PASS-8821')"
+      }
+    }
+  }
+}

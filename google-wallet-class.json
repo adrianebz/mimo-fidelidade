@@ -1,0 +1,47 @@
+{
+  "id": "3388000000023184117.fidelidade",
+  "issuerName": "Casa Nuvem",
+  "programName": "Cafés Especiais & Confeitaria Artesanal",
+  "localizedIssuerName": {
+    "defaultValue": {
+      "language": "pt-BR",
+      "value": "Casa Nuvem"
+    }
+  },
+  "localizedProgramName": {
+    "defaultValue": {
+      "language": "pt-BR",
+      "value": "Cafés Especiais & Confeitaria Artesanal"
+    }
+  },
+  "hexBackgroundColor": "#141416",
+  "accountNameLabel": "CLIENTE VIP",
+  "accountIdLabel": "CÓDIGO DO CARTÃO",
+  "rewardsTierLabel": "STATUS",
+  "programLogo": {
+    "sourceUri": {
+      "uri": "https://mimo-fidelidade.web.app/mimo-logo.jpg"
+    },
+    "contentDescription": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Logotipo Casa Nuvem"
+      }
+    }
+  },
+  "heroImage": {
+    "sourceUri": {
+      "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+    },
+    "contentDescription": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Cartela de Selos MIMO Fidelidade"
+      }
+    }
+  },
+  "countryCode": "BR",
+  "reviewStatus": "UNDER_REVIEW",
+  "allowMultipleUsersPerObject": true,
+  "multipleDevicesAndHoldersAllowedStatus": "multipleHolders"
+}

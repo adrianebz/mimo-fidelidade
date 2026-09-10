@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { Smartphone, Apple } from 'lucide-react';
+import { Smartphone, Apple, Sparkles } from 'lucide-react';
 
 interface PassPreviewProps {
   storeName: string;
@@ -8,13 +8,17 @@ interface PassPreviewProps {
   stamps: number;
   required?: number;
   rewardLabel: string;
+  rewardDescription?: string;
   cycle?: number;
   serial: string;
   backgroundColor?: string;
   foregroundColor?: string;
   labelColor?: string;
   accentColor?: string;
-  stampIcon?: 'coin' | 'smile' | 'star' | 'coffee';
+  stampIcon?: 'coin' | 'smile' | 'star' | 'coffee' | 'cookie' | 'heart' | 'sparkle' | 'fire';
+  stampImage?: string | null;
+  rewardStampImage?: string | null;
+  storeLogoImage?: string | null;
   defaultWallet?: 'apple' | 'google';
 }
 
@@ -24,13 +28,18 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
   stamps,
   required = 10,
   rewardLabel,
+  rewardDescription,
   cycle = 1,
   serial,
-  backgroundColor = '#0F0F10',
+  backgroundColor = '#141416',
   foregroundColor = '#FFFFFF',
-  labelColor = '#8ABABF',
+  labelColor = '#9CA3AF',
   accentColor = '#FFC82C',
-  defaultWallet = 'apple'
+  stampIcon = 'cookie',
+  stampImage,
+  rewardStampImage,
+  storeLogoImage,
+  defaultWallet = 'google'
 }) => {
   const [walletType, setWalletType] = useState<'apple' | 'google'>(defaultWallet);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -41,7 +50,7 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
         qrCanvasRef.current,
         serial,
         {
-          width: 140,
+          width: 130,
           margin: 1,
           color: {
             dark: '#000000',
@@ -55,24 +64,12 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
     }
   }, [serial, walletType]);
 
-  const isComplete = stamps >= 10;
+  const isComplete = stamps >= required;
 
   return (
-    <div className="flex flex-col items-center select-none w-full max-w-[380px] mx-auto">
+    <div className="flex flex-col items-center select-none w-full max-w-[390px] mx-auto">
       {/* Wallet Switcher Tabs */}
       <div className="flex items-center gap-2 p-1 bg-white/5 border border-white/10 rounded-full mb-4">
-        <button
-          type="button"
-          onClick={() => setWalletType('apple')}
-          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-            walletType === 'apple'
-              ? 'bg-white text-black shadow-md'
-              : 'text-white/70 hover:text-white'
-          }`}
-        >
-          <Apple className="w-3.5 h-3.5" />
-          Apple Wallet
-        </button>
         <button
           type="button"
           onClick={() => setWalletType('google')}
@@ -84,6 +81,18 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
         >
           <Smartphone className="w-3.5 h-3.5" />
           Google Wallet
+        </button>
+        <button
+          type="button"
+          onClick={() => setWalletType('apple')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+            walletType === 'apple'
+              ? 'bg-white text-black shadow-md'
+              : 'text-white/70 hover:text-white'
+          }`}
+        >
+          <Apple className="w-3.5 h-3.5" />
+          Apple Wallet
         </button>
       </div>
 
@@ -102,7 +111,7 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
 
         {/* Digital Pass Card */}
         <div
-          className="rounded-[24px] p-4 flex flex-col justify-between transition-colors duration-300 shadow-xl border border-white/10 overflow-hidden relative min-h-[500px]"
+          className="rounded-[24px] p-4 sm:p-5 flex flex-col justify-between transition-colors duration-300 shadow-xl border border-white/10 overflow-hidden relative min-h-[520px]"
           style={{
             backgroundColor,
             color: foregroundColor
@@ -111,129 +120,182 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
           {/* Subtle shine background overlay */}
           <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
 
-          {/* Header */}
+          {/* Header com Logo e Nome da Loja */}
           <div className="flex items-start justify-between relative z-10 border-b border-white/10 pb-3">
-            <div>
-              <span
-                className="text-[10px] font-bold tracking-widest uppercase block"
-                style={{ color: labelColor }}
-              >
-                CARTÃO DE FIDELIDADE
-              </span>
-              <h3 className="text-xl font-black tracking-tight" style={{ color: foregroundColor }}>
-                {storeName}
-              </h3>
+            <div className="flex items-center gap-2.5">
+              {storeLogoImage ? (
+                <div className="h-10 w-10 rounded-xl bg-black/40 border border-white/20 p-1 flex items-center justify-center overflow-hidden shrink-0 shadow-md">
+                  <img src={storeLogoImage} alt="Logo" className="h-full w-full object-contain" />
+                </div>
+              ) : (
+                <div
+                  className="h-10 w-10 rounded-xl flex items-center justify-center text-lg shadow-inner font-bold shrink-0"
+                  style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                >
+                  🏪
+                </div>
+              )}
+              <div>
+                <h3 className="text-base font-black tracking-tight leading-tight" style={{ color: foregroundColor }}>
+                  {storeName || 'Nome da Loja'}
+                </h3>
+                <span className="text-[10px] font-bold tracking-wider uppercase block opacity-70" style={{ color: labelColor }}>
+                  CARTÃO DE FIDELIDADE
+                </span>
+              </div>
             </div>
             <div className="text-right">
-              <span
-                className="text-[10px] font-bold tracking-widest uppercase block"
-                style={{ color: labelColor }}
-              >
-                SALDO
+              <span className="text-[9px] font-bold tracking-widest uppercase block opacity-70" style={{ color: labelColor }}>
+                STATUS
               </span>
-              <span
-                className="text-2xl font-black tracking-tight"
-                style={{ color: accentColor }}
-              >
-                {stamps} / {required}
+              <span className="text-xs font-semibold text-emerald-400">
+                Ativo
               </span>
             </div>
           </div>
 
           {/* Customer & Info Banner */}
-          <div className="grid grid-cols-2 gap-2 my-2 relative z-10">
+          <div className="grid grid-cols-2 gap-2 my-2.5 relative z-10 border-b border-white/5 pb-2.5">
             <div>
               <span className="text-[9px] font-bold tracking-wider uppercase block" style={{ color: labelColor }}>
-                CLIENTE
+                CLIENTE VIP
               </span>
-              <p className="text-sm font-semibold truncate" style={{ color: foregroundColor }}>
+              <p className="text-xs sm:text-sm font-bold truncate" style={{ color: foregroundColor }}>
                 {customerName || 'Cliente Convidado'}
               </p>
             </div>
             <div className="text-right">
               <span className="text-[9px] font-bold tracking-wider uppercase block" style={{ color: labelColor }}>
-                CICLO ATUAL
+                PROGRESSO
               </span>
-              <p className="text-sm font-bold" style={{ color: foregroundColor }}>
-                #{cycle}
-              </p>
+              <span className="text-xs sm:text-sm font-black" style={{ color: accentColor }}>
+                {stamps} / {required} SELOS
+              </span>
             </div>
           </div>
 
-          {/* 10-Stamps Strip Grid (Interactive Visual Representation) */}
-          <div className="bg-black/40 backdrop-blur-md rounded-2xl p-3 my-2 border border-white/10 relative z-10">
-            <div className="grid grid-cols-5 gap-2.5">
+          {/* ═══════════════════════════════════════════════════════════════
+              CARTELA DE SELOS GOOGLE WALLET (2x5 GRID CIRCULAR)
+             ═══════════════════════════════════════════════════════════════ */}
+          <div className="bg-[#18181b] rounded-2xl p-3.5 sm:p-4 my-2 border border-white/10 relative z-10 shadow-inner">
+            <div className="grid grid-cols-5 gap-2 sm:gap-2.5 justify-items-center">
               {Array.from({ length: 10 }).map((_, index) => {
                 const i = index + 1;
                 const isFilled = i <= stamps;
                 const is10th = i === 10;
 
+                if (is10th) {
+                  // 10º Selo: Selo Especial do Prêmio com Estrela Dourada
+                  return (
+                    <div key={i} className="relative flex items-center justify-center">
+                      <div className="absolute -top-1 -right-1 z-10 w-4 h-4 rounded-full bg-white text-amber-500 flex items-center justify-center text-[9px] shadow-md font-bold leading-none border border-amber-200">
+                        ⭐
+                      </div>
+                      <div
+                        className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center p-1 shadow-lg transition-transform ${
+                          isFilled
+                            ? 'bg-[#FFC82C] text-black shadow-amber-400/40 ring-2 ring-amber-300 scale-105'
+                            : 'bg-[#FFC82C] text-black shadow-amber-400/20 border-2 border-amber-300/80'
+                        }`}
+                      >
+                        {rewardStampImage ? (
+                          <img src={rewardStampImage} alt="Prêmio" className="w-full h-full object-contain rounded-full" />
+                        ) : (
+                          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-center leading-[1.05] tracking-tight text-zinc-950 line-clamp-3 select-none px-0.5">
+                            {rewardLabel || 'BROWNIE COOKIE GRÁTIS'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (isFilled) {
+                  // Selos 1 a 9 Preenchidos: Medalha Dourada
+                  return (
+                    <div
+                      key={i}
+                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full p-[2px] bg-gradient-to-b from-[#FFE57F] via-[#F59E0B] to-[#92400E] shadow-md shadow-amber-500/25 flex items-center justify-center transition-transform"
+                    >
+                      <div className="w-full h-full rounded-full bg-gradient-to-tr from-[#78350F] via-[#B45309] to-[#D97706] border border-[#FEF3C7]/50 flex items-center justify-center text-amber-100 shadow-inner overflow-hidden">
+                        {stampImage ? (
+                          <img src={stampImage} alt="Selo" className="w-full h-full object-cover rounded-full" />
+                        ) : stampIcon === 'cookie' ? (
+                          <span className="text-base select-none filter drop-shadow">🍪</span>
+                        ) : stampIcon === 'coffee' ? (
+                          <span className="text-base select-none filter drop-shadow">☕</span>
+                        ) : stampIcon === 'star' ? (
+                          <span className="text-base select-none filter drop-shadow">⭐</span>
+                        ) : stampIcon === 'heart' ? (
+                          <span className="text-base select-none filter drop-shadow">❤️</span>
+                        ) : stampIcon === 'sparkle' ? (
+                          <span className="text-base select-none filter drop-shadow">✨</span>
+                        ) : stampIcon === 'fire' ? (
+                          <span className="text-base select-none filter drop-shadow">🔥</span>
+                        ) : stampIcon === 'coin' ? (
+                          <span className="text-base select-none filter drop-shadow">🪙</span>
+                        ) : (
+                          <span className="text-xs font-black text-amber-100">★</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Selos 1 a 9 Vazios
                 return (
                   <div
                     key={i}
-                    className={`aspect-square rounded-full flex flex-col items-center justify-center relative transition-all duration-300 ${
-                      isFilled
-                        ? 'shadow-lg scale-100'
-                        : is10th
-                        ? 'border-2 border-dashed border-mimo-yellow/60 bg-mimo-yellow/10'
-                        : 'border border-white/20 bg-white/5'
-                    }`}
-                    style={
-                      isFilled
-                        ? {
-                            background: `linear-gradient(135deg, #FFE57F 0%, ${accentColor} 45%, #C9992E 100%)`,
-                            boxShadow: `0 2px 10px ${accentColor}66`,
-                            color: '#1a1300'
-                          }
-                        : {}
-                    }
+                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border border-white/15 bg-white/5 flex items-center justify-center transition-all"
                   >
-                    {isFilled ? (
-                      <div className="flex flex-col items-center justify-center">
-                        {/* Smile mascot / coin shape */}
-                        <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                          <circle cx="8.5" cy="9" r="1.5" />
-                          <circle cx="15.5" cy="9" r="1.5" />
-                          <path d="M7 13 Q12 18 17 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      </div>
-                    ) : is10th ? (
-                      <span className="text-xs font-black text-mimo-yellow">★ 10</span>
-                    ) : (
-                      <span className="text-xs font-semibold opacity-40">{i}</span>
-                    )}
+                    <span className="text-[10px] font-semibold text-white/20 select-none">
+                      {i}
+                    </span>
                   </div>
                 );
               })}
             </div>
+          </div>
 
-            {/* Status footer inside strip */}
-            <div className="mt-2.5 text-center">
-              {isComplete ? (
-                <div className="bg-mimo-green text-white text-[11px] font-bold py-1 px-3 rounded-full inline-block animate-pulse shadow-md">
-                  🎉 Recompensa Pronta: {rewardLabel}
-                </div>
-              ) : (
-                <span className="text-[11px] font-medium" style={{ color: labelColor }}>
-                  Faltam {Math.max(0, 10 - stamps)} selos para {rewardLabel}
-                </span>
-              )}
+          {/* ═══════════════════════════════════════════════════════════════
+              CARDS INFORMATIVOS GOOGLE WALLET
+             ═══════════════════════════════════════════════════════════════ */}
+          <div className="space-y-1.5 relative z-10 text-left my-1">
+            {/* Card 1: Stamps */}
+            <div className="bg-[#242428] rounded-xl p-2.5 sm:p-3 border border-white/5">
+              <span className="text-[10px] text-zinc-400 font-medium block">Stamps</span>
+              <p className="text-xs font-semibold text-white mt-0.5 leading-snug">
+                {rewardDescription || 'Here you will see your of stamps'}
+              </p>
+            </div>
+
+            {/* Card 2: Selos */}
+            <div className="bg-[#242428] rounded-xl p-2.5 sm:p-3 border border-white/5 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-zinc-400 font-medium block">Selos</span>
+                <p className="text-xs font-bold text-white mt-0.5">
+                  {stamps}/{required}
+                </p>
+              </div>
+              <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 uppercase tracking-wider">
+                {walletType === 'google' ? 'Google Wallet' : 'Apple Wallet'}
+              </span>
             </div>
           </div>
 
           {/* Barcode / QR Code Area */}
-          <div className="bg-white rounded-2xl p-3 flex flex-col items-center justify-center text-center shadow-md relative z-10">
-            <canvas ref={qrCanvasRef} className="w-28 h-28" />
-            <span className="text-[10px] font-mono text-gray-700 tracking-wider mt-1 truncate max-w-full">
+          <div className="bg-white rounded-xl p-2.5 flex flex-col items-center justify-center text-center shadow-md relative z-10 my-1">
+            <canvas ref={qrCanvasRef} className="w-24 h-24" />
+            <span className="text-[9px] font-mono text-gray-700 tracking-wider mt-0.5 truncate max-w-full">
               {serial}
             </span>
-            <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-widest mt-0.5">
+            <span className="text-[8px] font-semibold text-gray-500 uppercase tracking-widest">
               Apresente ao pagar
             </span>
           </div>
 
           {/* Wallet footer branding */}
-          <div className="mt-3 flex items-center justify-between text-[10px] relative z-10 opacity-70">
+          <div className="mt-1 flex items-center justify-between text-[9px] relative z-10 opacity-70">
             <span style={{ color: labelColor }}>Fidelidade por Mimo</span>
             <span className="font-semibold uppercase tracking-wider" style={{ color: foregroundColor }}>
               {walletType === 'apple' ? 'Apple Wallet' : 'Google Wallet'}

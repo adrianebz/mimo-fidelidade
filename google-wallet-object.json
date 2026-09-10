@@ -1,0 +1,135 @@
+{
+  "id": "3388000000023184117.casa-nuvem_5511999998888_1",
+  "classId": "3388000000023184117.fidelidade",
+  "state": "ACTIVE",
+  "accountId": "5511999998888",
+  "accountName": "Lia Martins",
+  "loyaltyPoints": {
+    "balance": {
+      "string": "8 / 10 SELOS"
+    },
+    "localizedLabel": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Cartão Mimo"
+      }
+    }
+  },
+  "barcode": {
+    "type": "QR_CODE",
+    "value": "MIMO:casa-nuvem_5511999998888_1:882104",
+    "alternateText": "MIMO-PASS-8821"
+  },
+  "heroImage": {
+    "sourceUri": {
+      "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+    },
+    "contentDescription": {
+      "defaultValue": {
+        "language": "pt-BR",
+        "value": "Progresso do Ciclo: 8 de 10 selos"
+      }
+    }
+  },
+  "textModulesData": [
+    {
+      "id": "cliente_vip",
+      "header": "CLIENTE VIP",
+      "body": "Lia Martins"
+    },
+    {
+      "id": "email_cliente",
+      "header": "E-MAIL CADASTRADO",
+      "body": "lia.martins@exemplo.com.br"
+    },
+    {
+      "id": "aniversario_cliente",
+      "header": "DATA DE ANIVERSÁRIO",
+      "body": "15/08"
+    },
+    {
+      "id": "celular_cliente",
+      "header": "CELULAR / WHATSAPP",
+      "body": "(11) 99999-8888"
+    },
+    {
+      "id": "premio_mimo",
+      "header": "MIMO APÓS 10 COMPRAS",
+      "body": "1 Café Filtrado Especial + Pão de Queijo Canastra"
+    },
+    {
+      "id": "progresso_ciclo",
+      "header": "PROGRESSO DO CICLO",
+      "body": "8 de 10 selos acumulados (Faltam 2 selos)"
+    },
+    {
+      "id": "status_cartao",
+      "header": "STATUS DO CARTÃO",
+      "body": "Ativo (Ciclo 1)"
+    },
+    {
+      "id": "regras_resgate",
+      "header": "INSTRUÇÃO DE RESGATE NO BALCÃO",
+      "body": "Apresente o QR Code no balcão a cada compra para creditar o selo. Recompensa válida por 30 dias após completar os 10 selos."
+    },
+    {
+      "id": "leitura_qr",
+      "header": "LEITURA DO QR CODE",
+      "body": "O lojista lê este QR code para creditar o selo no caixa."
+    }
+  ],
+  "infoModuleData": {
+    "labelValueRows": [
+      {
+        "columns": [
+          {
+            "label": "CLIENTE VIP",
+            "value": "Lia Martins"
+          },
+          {
+            "label": "STATUS",
+            "value": "Ativo"
+          }
+        ]
+      },
+      {
+        "columns": [
+          {
+            "label": "E-MAIL",
+            "value": "lia.martins@exemplo.com.br"
+          },
+          {
+            "label": "ANIVERSÁRIO",
+            "value": "15/08"
+          }
+        ]
+      },
+      {
+        "columns": [
+          {
+            "label": "PROGRESSO",
+            "value": "8 / 10 SELOS"
+          },
+          {
+            "label": "FALTAM",
+            "value": "2 selos"
+          }
+        ]
+      }
+    ]
+  },
+  "linksModuleData": {
+    "uris": [
+      {
+        "kind": "walletobjects#uri",
+        "uri": "https://mimo-fidelidade.web.app",
+        "description": "Acessar Portal do Clube MIMO"
+      },
+      {
+        "kind": "walletobjects#uri",
+        "uri": "https://mimo-fidelidade.web.app/c/casa-nuvem",
+        "description": "Ver Minha Cartela & Regulamento"
+      }
+    ]
+  }
+}

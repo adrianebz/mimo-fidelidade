@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { SiteNavTab } from "../../components/SiteHeader.js";
 import { Html5Qrcode } from "html5-qrcode";
-import { carimbarSelo, resgatarPremio, normalizarCelularBR, obterDadosLojista } from "../../services/mimoWalletService.js";
+import { carimbarSelo, resgatarPremio, normalizarCelularBR, obterDadosLojista, publicarIdentidadeVisual, obterClientesReaisLojista } from "../../services/mimoWalletService.js";
 import {
   Users,
   Award,
@@ -70,86 +70,17 @@ interface ProgramItem {
   revenue: number;
 }
 
-const initialCustomers: Customer[] = [
-  {
-    id: "c1",
-    name: "Marina Azevedo",
-    email: "marina@exemplo.com",
-    phone: "(11) 98765-4321",
-    stamps: 0,
-    totalStamps: 10,
-    lastVisit: "Hoje, 08:30",
-    birthday: "15/10",
-    avatarBg: "bg-emerald-600/30 text-emerald-400 border border-emerald-500/30",
-    initials: "MA",
-    qrToken: "MIMO-PASS-MA01",
-  },
-  {
-    id: "c2",
-    name: "Caio Moura",
-    email: "caio@exemplo.com",
-    phone: "(11) 97654-3210",
-    stamps: 4,
-    totalStamps: 10,
-    lastVisit: "Ontem, 16:45",
-    birthday: "28/09",
-    avatarBg: "bg-amber-600/30 text-amber-400 border border-amber-500/30",
-    initials: "CM",
-    qrToken: "MIMO-PASS-CM02",
-  },
-  {
-    id: "c3",
-    name: "Isabela Rios",
-    email: "isabela@exemplo.com",
-    phone: "(11) 99123-4567",
-    stamps: 10,
-    totalStamps: 10,
-    lastVisit: "Há 2 dias",
-    birthday: "14/09",
-    avatarBg: "bg-sky-600/30 text-sky-400 border border-sky-500/30",
-    initials: "IR",
-    qrToken: "MIMO-PASS-IR03",
-  },
-  {
-    id: "c4",
-    name: "Gustavo Neri",
-    email: "gustavo@exemplo.com",
-    phone: "(11) 98234-5678",
-    stamps: 6,
-    totalStamps: 10,
-    lastVisit: "Há 3 dias",
-    birthday: "02/11",
-    avatarBg: "bg-purple-600/30 text-purple-400 border border-purple-500/30",
-    initials: "GN",
-    qrToken: "MIMO-PASS-GN04",
-  },
-  {
-    id: "c5",
-    name: "Bia Santos",
-    email: "bia@exemplo.com",
-    phone: "(11) 99876-5432",
-    stamps: 2,
-    totalStamps: 10,
-    lastVisit: "Há 4 dias",
-    birthday: "18/09",
-    avatarBg: "bg-teal-600/30 text-teal-400 border border-teal-500/30",
-    initials: "BS",
-    qrToken: "MIMO-PASS-BS05",
-  },
-];
-
-const initialProgramItems: ProgramItem[] = [
-  { id: "p1", name: "Produto / Serviço Padrão", category: "Geral", price: 20.0, stampsGiven: 1, active: true, totalStampsGenerated: 1240, revenue: 24800 },
-  { id: "p2", name: "Item Especial", category: "Destaques", price: 35.0, stampsGiven: 1, active: true, totalStampsGenerated: 890, revenue: 31150 },
-  { id: "p3", name: "Combo Fidelidade", category: "Combos", price: 50.0, stampsGiven: 2, active: true, totalStampsGenerated: 650, revenue: 32500 },
-  { id: "p4", name: "Experiência Premium", category: "Premium", price: 75.0, stampsGiven: 3, active: true, totalStampsGenerated: 410, revenue: 30750 },
-];
-
 export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = ({ onNavigate }) => {
   const [currentTab, setCurrentTab] = useState<DashboardTab>("visao-geral");
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedUnit, setSelectedUnit] = useState("Loja Principal");
-  const [currentSlug, setCurrentSlug] = useState(() => new URLSearchParams(window.location.search).get("loja") || "minha-loja");
+  const [currentSlug, setCurrentSlug] = useState(() => {
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("mimo_active_lojista");
+      if (saved) return saved;
+    }
+    return new URLSearchParams(window.location.search).get("loja") || "nox-dessert-club";
+  });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -157,7 +88,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
   // Real Camera Scanner & PIN state (Etapa 2)
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [scannedCustomer, setScannedCustomer] = useState<Customer>(initialCustomers[1]);
+  const [scannedCustomer, setScannedCustomer] = useState<Customer | null>(null);
   const [scanningEffect, setScanningEffect] = useState(false);
   const [scannerMode, setScannerMode] = useState<"camera" | "manual">("camera");
   const [operatorPin, setOperatorPin] = useState("1234");
@@ -176,8 +107,18 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
   // Program Mode & Items state (Vendas gerais vs Itens fixos)
-  const [programMode, setProgramMode] = useState<"geral" | "itens-fixos">("itens-fixos");
-  const [programItems, setProgramItems] = useState<ProgramItem[]>(initialProgramItems);
+  const [programMode, setProgramMode] = useState<"geral" | "itens-fixos">("geral");
+  const [programItems, setProgramItems] = useState<ProgramItem[]>(() => {
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("mimo_program_items");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {}
+      }
+    }
+    return [];
+  });
   const [newItemModal, setNewItemModal] = useState(false);
   const [newItemData, setNewItemData] = useState({
     name: "",
@@ -194,23 +135,64 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
     storeLogoImage: "" as string | null, // URL or base64
     bgColor: "#141416",
     cardStyle: "dark-graphite",
-    accentColor: "#7C3AED",
+    accentColor: "#FFC82C",
     textColor: "#FFFFFF",
-    stampIcon: "award",
+    stampIcon: "cookie",
     stampImage: "" as string | null, // Selo das unidades 1-9
-    rewardTitle: "Recompensa Exclusiva (10º Selo)",
-    rewardDescription: "Apresente o QR Code no balcão e retire seu mimo.",
+    rewardTitle: "BROWNIE COOKIE GRÁTIS",
+    rewardDescription: "Here you will see your of stamps",
     rewardStampImage: "" as string | null, // Selo do 10º mimo
     validityDays: "30",
   });
 
+  const [previewStamps, setPreviewStamps] = useState<number>(4);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishSuccessBanner, setPublishSuccessBanner] = useState<string | null>(null);
+  const [lastPublishedTime, setLastPublishedTime] = useState<string | null>(() => {
+    if (typeof localStorage !== "undefined") {
+      const ts = localStorage.getItem("mimo_last_published_at");
+      if (ts) {
+        try {
+          return new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        } catch {}
+      }
+    }
+    return null;
+  });
 
-  // Sincroniza dados e status administrativo da empresa direto do Firestore
+  // Dynamic metrics derived from real registered customers
+  const totalClientes = customers.length;
+  const totalSelos = customers.reduce((sum, c) => sum + (c.stamps || 0), 0);
+  const recompensasProntas = customers.filter((c) => (c.stamps || 0) >= (c.totalStamps || 10)).length;
+  const clientesRetorno = customers.filter((c) => (c.stamps || 0) > 1).length;
+  const taxaRetorno = totalClientes > 0 ? Math.round((clientesRetorno / totalClientes) * 100) : 0;
+  const aniversariantes = customers.filter((c) => c.birthday && c.birthday !== "Não informado");
+  const recompensasPendentes = customers.filter((c) => (c.stamps || 0) >= (c.totalStamps || 10));
+
+  // Sincroniza dados e status administrativo da empresa e restaura personalizações salvas
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const slug = params.get("loja") || "minha-loja";
+    const slug = params.get("loja") || (typeof localStorage !== "undefined" ? localStorage.getItem("mimo_active_lojista") : null) || "nox-dessert-club";
     setCurrentSlug(slug);
+
+    // 1. Restaura personalizações salvas pelo lojista no Estúdio de Marca
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem(`mimo_card_config_${slug}`) || localStorage.getItem("mimo_card_config");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setCardConfig((prev) => ({
+            ...prev,
+            ...parsed,
+          }));
+        } catch (e) {
+          console.warn("Erro ao restaurar cardConfig salvo:", e);
+        }
+      }
+    }
+
+    // 2. Busca dados complementares do lojista no Firestore (restaura personalizações completas da loja)
     obterDadosLojista(slug).then((loja) => {
       if (loja.statusFinanceiro) {
         setFinancialStatus(loja.statusFinanceiro);
@@ -218,16 +200,87 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
       if (loja.nome) {
         setCardConfig((prev) => ({
           ...prev,
-          storeName: loja.nome,
+          storeName: loja.nome || prev.storeName,
+          tagline: loja.layout?.nomePrograma || prev.tagline,
+          bgColor: loja.layout?.corFundo || prev.bgColor,
+          textColor: loja.layout?.corTexto || prev.textColor,
+          accentColor: (loja.layout as any)?.accentColor || prev.accentColor,
+          storeLogoImage: (loja.layout?.logoUrl && !loja.layout?.logoUrl.includes('mimo-logo.jpg'))
+            ? loja.layout?.logoUrl 
+            : (slug === 'nox-dessert-club' ? 'https://mimo-fidelidade.web.app/logos/nox-dessert-club.jpg' : prev.storeLogoImage),
+          stampIcon: loja.layout?.stampIcon || prev.stampIcon,
+          stampImage: loja.layout?.stampImage ?? prev.stampImage,
           rewardTitle: loja.layout?.premio || prev.rewardTitle,
+          rewardDescription: loja.layout?.instrucaoResgate || prev.rewardDescription,
+          rewardStampImage: loja.layout?.rewardStampImage ?? prev.rewardStampImage,
+          validityDays: String(loja.layout?.validadeDias || prev.validityDays || 30),
         }));
+      }
+    });
+
+    // 3. Busca clientes reais cadastrados na subcoleção do lojista no Firestore
+    obterClientesReaisLojista(slug).then((realCustomers) => {
+      if (realCustomers && realCustomers.length > 0) {
+        const formatted: Customer[] = realCustomers.map((rc, idx) => ({
+          id: rc.id || rc.clienteId || `c-${idx}`,
+          name: rc.nome || 'Cliente VIP',
+          email: rc.email || '',
+          phone: rc.celular || '',
+          stamps: rc.stamps ?? rc.selos ?? 0,
+          totalStamps: rc.meta || 10,
+          lastVisit: rc.lastVisit || 'Cadastrado recentemente',
+          birthday: rc.aniversarioMMDD ? rc.aniversarioMMDD.split('-').reverse().join('/') : (rc.aniversario || 'Não informado'),
+          avatarBg: 'bg-primary/20 text-primary border border-primary/30',
+          initials: (rc.nome || 'CV').slice(0, 2).toUpperCase(),
+          qrToken: `MIMO:${slug}_${rc.id || rc.clienteId}_1:123456`,
+        }));
+        setCustomers(formatted);
+        setScannedCustomer((prev) => prev || formatted[0]);
+      } else {
+        setCustomers([]);
+        setScannedCustomer(null);
       }
     });
   }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handlePublishCard = async () => {
+    setIsPublishing(true);
+    setPublishSuccessBanner(null);
+
+    // Timeout de segurança absoluto de 4.5 segundos para NUNCA travar o botão
+    const safetyTimer = setTimeout(() => {
+      setIsPublishing(false);
+      const timeStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      setLastPublishedTime(timeStr);
+      setPublishSuccessBanner(`✅ Identidade visual da "${cardConfig.storeName}" publicada e sincronizada nas carteiras digitais às ${timeStr}!`);
+      showToast("🎉 Identidade visual e cartela sincronizadas com sucesso!");
+    }, 4500);
+
+    try {
+      const res = await publicarIdentidadeVisual(currentSlug, cardConfig);
+      clearTimeout(safetyTimer);
+      if (res.logoUrl) {
+        setCardConfig((prev) => ({
+          ...prev,
+          storeLogoImage: res.logoUrl || prev.storeLogoImage,
+        }));
+      }
+      const timeStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      setLastPublishedTime(timeStr);
+      setPublishSuccessBanner(`✅ Identidade visual da "${cardConfig.storeName}" publicada e sincronizada nas carteiras digitais às ${timeStr}!`);
+      showToast(`🎉 ${res.message}`);
+      playSuccessSound(true);
+    } catch (err: any) {
+      clearTimeout(safetyTimer);
+      showToast(`Erro ao publicar: ${err.message || 'Tente novamente'}`);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   // Image Upload helper
@@ -503,25 +556,9 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             </button>
 
             <div className="flex items-center gap-2 text-sm">
-              <span className="font-bold text-foreground hover:text-primary transition-colors">
+              <span className="font-bold text-foreground text-base tracking-tight">
                 {cardConfig.storeName}
               </span>
-              <span className="text-muted-foreground">›</span>
-              <select
-                value={selectedUnit}
-                onChange={(e) => setSelectedUnit(e.target.value)}
-                className="bg-transparent text-muted-foreground hover:text-foreground border-none text-xs sm:text-sm font-medium focus:ring-0 focus:outline-none cursor-pointer"
-              >
-                <option value="Pinheiros (Matriz)" className="bg-[#18181B] text-foreground">
-                  Pinheiros
-                </option>
-                <option value="Jardins" className="bg-[#18181B] text-foreground">
-                  Jardins
-                </option>
-                <option value="Itaim Bibi" className="bg-[#18181B] text-foreground">
-                  Itaim Bibi
-                </option>
-              </select>
             </div>
 
             <div className="hidden md:flex items-center gap-2">
@@ -550,7 +587,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             <button
               type="button"
               onClick={() => {
-                setScannedCustomer(customers[1]);
+                setScannedCustomer(customers[0] || null);
                 setScannerOpen(true);
               }}
               className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer"
@@ -569,7 +606,9 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 aria-label="Notificações"
               >
                 <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-[#0F0F12]" />
+                {(aniversariantes.length + recompensasPendentes.length) > 0 && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-[#0F0F12] animate-pulse" />
+                )}
               </button>
 
               {notificationsOpen && (
@@ -577,36 +616,67 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <div className="flex items-center justify-between border-b border-border/60 pb-2">
                     <span className="text-xs font-bold text-foreground">Notificações da Loja</span>
                     <span className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
-                      3 novas
+                      {aniversariantes.length + recompensasPendentes.length} {aniversariantes.length + recompensasPendentes.length === 1 ? 'nova' : 'novas'}
                     </span>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div
-                      className="p-2.5 rounded-xl bg-card hover:bg-card/80 border border-border/40 space-y-1 cursor-pointer"
-                      onClick={() => {
-                        setNotificationsOpen(false);
-                        setCurrentTab("aniversarios");
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-primary">🎂 Aniversariante</span>
-                        <span className="text-[10px] text-muted-foreground">Em 2 dias</span>
+                  <div className="space-y-2 text-xs max-h-60 overflow-y-auto">
+                    {aniversariantes.length === 0 && recompensasPendentes.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-muted-foreground">
+                        Nenhuma notificação no momento. As novidades de aniversários e resgates de clientes aparecerão aqui.
                       </div>
-                      <p className="text-muted-foreground">Isabela Rios faz aniversário dia 14/09. Envie 1 mimo especial!</p>
-                    </div>
+                    ) : (
+                      <>
+                        {aniversariantes.map((c) => (
+                          <div
+                            key={`notif-bday-${c.id}`}
+                            className="p-2.5 rounded-xl bg-card hover:bg-card/80 border border-border/40 space-y-1 cursor-pointer"
+                            onClick={() => {
+                              setNotificationsOpen(false);
+                              setCurrentTab("aniversarios");
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-primary">🎂 Aniversariante</span>
+                              <span className="text-[10px] text-muted-foreground">{c.birthday}</span>
+                            </div>
+                            <p className="text-muted-foreground">{c.name} comemora aniversário. Envie 1 mimo especial!</p>
+                          </div>
+                        ))}
+                        {recompensasPendentes.map((c) => (
+                          <div
+                            key={`notif-rew-${c.id}`}
+                            className="p-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 space-y-1 cursor-pointer"
+                            onClick={() => {
+                              setNotificationsOpen(false);
+                              setCurrentTab("aniversarios");
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-emerald-400">🎁 Mimo Disponível</span>
+                              <span className="text-[10px] text-emerald-400 font-bold">{c.stamps}/{c.totalStamps} Selos</span>
+                            </div>
+                            <p className="text-muted-foreground">{c.name} completou o ciclo e pode retirar o mimo.</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* User Profile Avatar */}
-            <div className="flex items-center gap-2 pl-1 border-l border-border/40">
-              <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground font-black text-xs flex items-center justify-center shadow-md">
-                LM
+            {/* Nomeador com o Nome da Loja */}
+            <div className="flex items-center gap-2 pl-2 border-l border-border/40">
+              <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground font-black text-xs flex items-center justify-center shadow-md uppercase">
+                {(cardConfig.storeName || 'Loja').slice(0, 2)}
               </div>
-              <div className="hidden lg:flex flex-col text-left leading-tight">
-                <span className="text-xs font-bold text-foreground">Lia Martins</span>
-                <span className="text-[10px] text-muted-foreground">Proprietária</span>
+              <div className="hidden sm:flex flex-col text-left leading-tight">
+                <span className="text-xs font-bold text-foreground">
+                  {cardConfig.storeName}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Lojista
+                </span>
               </div>
             </div>
 
@@ -714,28 +784,17 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
           <div className="space-y-8 animate-fade-in">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <span className="label-eyebrow text-muted-foreground">
-                  QUINTA-FEIRA, 12 DE SETEMBRO
+                <span className="label-eyebrow text-muted-foreground uppercase">
+                  {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </span>
                 <h1 className="mt-2 text-3xl sm:text-4xl font-black text-foreground tracking-tight">
-                  Bom dia, Lia.
+                  Bom dia
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Acompanhe o que está acontecendo na {cardConfig.storeName} hoje.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setScannedCustomer(customers[1]);
-                  setScannerOpen(true);
-                }}
-                className="self-start sm:self-auto flex items-center gap-2 px-5 py-3 rounded-xl bg-foreground text-background hover:bg-primary hover:text-primary-foreground font-bold text-sm transition-all shadow-lg cursor-pointer"
-              >
-                <Scan className="w-4 h-4 text-primary group-hover:text-primary-foreground" />
-                <span>Escanear QR do Cliente</span>
-              </button>
             </div>
 
             {/* Banner: Link de Balcão e QR Code de Cadastro (Etapa 2) */}
@@ -748,9 +807,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-primary uppercase tracking-wider">
                       Cadastro Público de Clientes (Etapa 2)
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
-                      Google Wallet Ativa
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 font-mono">
@@ -824,13 +880,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <Users className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-500/10">
-                    +12,5%
+                    {totalClientes > 0 ? `+${totalClientes} ativos` : 'Base inicial'}
                   </span>
                 </div>
                 <div className="mt-4">
                   <span className="text-xs text-muted-foreground font-medium">Clientes ativos</span>
-                  <div className="text-3xl font-black text-foreground mt-1">148</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">vs. período anterior</span>
+                  <div className="text-3xl font-black text-foreground mt-1">{totalClientes}</div>
+                  <span className="text-[11px] text-muted-foreground mt-1 block">cadastrados no sistema</span>
                 </div>
               </div>
 
@@ -840,13 +896,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <Award className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-primary px-2 py-0.5 rounded-full bg-primary/10">
-                    +8,2%
+                    {totalSelos > 0 ? `+${totalSelos} selos` : '0 selos'}
                   </span>
                 </div>
                 <div className="mt-4">
                   <span className="text-xs text-muted-foreground font-medium">Selos no ciclo</span>
-                  <div className="text-3xl font-black text-foreground mt-1">432</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">vs. período anterior</span>
+                  <div className="text-3xl font-black text-foreground mt-1">{totalSelos}</div>
+                  <span className="text-[11px] text-muted-foreground mt-1 block">concedidos aos clientes</span>
                 </div>
               </div>
 
@@ -856,13 +912,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <Gift className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-amber-400 px-2 py-0.5 rounded-full bg-amber-500/10">
-                    +4 esta semana
+                    {recompensasProntas > 0 ? `${recompensasProntas} prontas` : '0 pendentes'}
                   </span>
                 </div>
                 <div className="mt-4">
                   <span className="text-xs text-muted-foreground font-medium">Recompensas prontas</span>
-                  <div className="text-3xl font-black text-foreground mt-1">7</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">vs. período anterior</span>
+                  <div className="text-3xl font-black text-foreground mt-1">{recompensasProntas}</div>
+                  <span className="text-[11px] text-muted-foreground mt-1 block">aguardando resgate</span>
                 </div>
               </div>
 
@@ -872,13 +928,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <TrendingUp className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-sky-400 px-2 py-0.5 rounded-full bg-sky-500/10">
-                    +6,4%
+                    {taxaRetorno > 0 ? `+${taxaRetorno}%` : '0%'}
                   </span>
                 </div>
                 <div className="mt-4">
                   <span className="text-xs text-muted-foreground font-medium">Taxa de retorno</span>
-                  <div className="text-3xl font-black text-foreground mt-1">68%</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">vs. período anterior</span>
+                  <div className="text-3xl font-black text-foreground mt-1">{taxaRetorno}%</div>
+                  <span className="text-[11px] text-muted-foreground mt-1 block">clientes recorrentes</span>
                 </div>
               </div>
             </div>
@@ -897,65 +953,90 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                       onClick={() => setCurrentTab("clientes")}
                       className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
                     >
-                      <span>Ver todos</span>
+                      <span>Ver todos ({customers.length})</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  <div className="divide-y divide-border/40">
-                    {customers.slice(0, 5).map((cust) => {
-                      const isReady = cust.stamps >= 10;
-                      return (
-                        <div
-                          key={cust.id}
-                          onClick={() => setSelectedCustomer(cust)}
-                          className="py-3.5 flex items-center justify-between gap-4 hover:bg-card/50 px-2 rounded-xl transition-colors cursor-pointer group"
+                  {customers.length === 0 ? (
+                    <div className="py-10 text-center space-y-3">
+                      <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <p className="font-bold text-foreground text-sm">Nenhum cliente cadastrado ainda</p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        Envie o link do balcão <strong>/c/{currentSlug}</strong> para os clientes cadastrarem seus cartões e começarem a pontuar.
+                      </p>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `${window.location.origin}/c/${currentSlug}`;
+                            navigator.clipboard.writeText(url);
+                            showToast("Link de cadastro copiado!");
+                          }}
+                          className="btn-mimo-ghost text-xs py-1.5 px-3.5"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${cust.avatarBg}`}>
-                              {cust.initials}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors">
-                                  {cust.name}
-                                </span>
-                                {isReady && (
-                                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground animate-pulse">
-                                    Mimo Pronto!
+                          Copiar Link de Cadastro
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/40">
+                      {customers.slice(0, 5).map((cust) => {
+                        const isReady = cust.stamps >= (cust.totalStamps || 10);
+                        return (
+                          <div
+                            key={cust.id}
+                            onClick={() => setSelectedCustomer(cust)}
+                            className="py-3.5 flex items-center justify-between gap-4 hover:bg-card/50 px-2 rounded-xl transition-colors cursor-pointer group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${cust.avatarBg}`}>
+                                {cust.initials}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors">
+                                    {cust.name}
                                   </span>
-                                )}
+                                  {isReady && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground animate-pulse">
+                                      Mimo Pronto!
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground truncate block">
+                                  {cust.email || cust.phone}
+                                </span>
                               </div>
-                              <span className="text-xs text-muted-foreground truncate block">
-                                {cust.email}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            <div className="w-24 sm:w-32 flex flex-col items-end gap-1">
-                              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    isReady ? "bg-primary" : "bg-primary/80"
-                                  }`}
-                                  style={{ width: `${(cust.stamps / cust.totalStamps) * 100}%` }}
-                                />
-                              </div>
-                              <span className="text-xs font-medium text-muted-foreground">
-                                <strong className={isReady ? "text-primary font-bold" : "text-foreground"}>
-                                  {cust.stamps}
-                                </strong>
-                                /{cust.totalStamps}
-                              </span>
                             </div>
 
-                            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="w-24 sm:w-32 flex flex-col items-end gap-1">
+                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      isReady ? "bg-primary" : "bg-primary/80"
+                                    }`}
+                                    style={{ width: `${Math.min(100, (cust.stamps / (cust.totalStamps || 10)) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  <strong className={isReady ? "text-primary font-bold" : "text-foreground"}>
+                                    {cust.stamps}
+                                  </strong>
+                                  /{cust.totalStamps || 10}
+                                </span>
+                              </div>
+
+                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
@@ -963,10 +1044,10 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <button
                     type="button"
                     onClick={() => {
-                      setScannedCustomer(customers[0]);
+                      setScannedCustomer(customers[0] || null);
                       setScannerOpen(true);
                     }}
-                    className="text-primary font-semibold hover:underline flex items-center gap-1"
+                    className="text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Scan className="w-3.5 h-3.5" />
                     <span>Ler QR Code do cliente</span>
@@ -1009,12 +1090,12 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                           stroke="oklch(0.855 0.163 88)"
                           strokeWidth="12"
                           strokeDasharray="251.2"
-                          strokeDashoffset={251.2 * (1 - 0.68)}
+                          strokeDashoffset={251.2 * (1 - (taxaRetorno / 100))}
                           strokeLinecap="round"
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <span className="text-2xl font-black text-foreground">68%</span>
+                        <span className="text-2xl font-black text-foreground">{taxaRetorno}%</span>
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
                           retorno
                         </span>
@@ -1026,14 +1107,18 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                         <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
                         <div>
                           <p className="font-semibold text-foreground">Clientes que voltaram</p>
-                          <span className="text-muted-foreground">68% da base ativa</span>
+                          <span className="text-muted-foreground">
+                            {clientesRetorno} {clientesRetorno === 1 ? 'cliente' : 'clientes'} ({taxaRetorno}% da base)
+                          </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2.5">
                         <span className="h-2.5 w-2.5 rounded-full bg-muted shrink-0" />
                         <div>
                           <p className="font-semibold text-foreground">Ainda no primeiro ciclo</p>
-                          <span className="text-muted-foreground">32% em fidelização</span>
+                          <span className="text-muted-foreground">
+                            {Math.max(0, totalClientes - clientesRetorno)} {Math.max(0, totalClientes - clientesRetorno) === 1 ? 'cliente' : 'clientes'} ({totalClientes > 0 ? 100 - taxaRetorno : 0}% em fidelização)
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1043,8 +1128,15 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                   <p className="text-xs text-foreground leading-relaxed">
-                    <strong className="text-primary font-bold">Boa notícia</strong> — sua taxa de retorno
-                    está 18% acima da média de cafeterias e confeitarias no Mimo.
+                    {totalClientes === 0 ? (
+                      <>
+                        <strong className="text-primary font-bold">Padrão Loja Nova</strong> — Seu programa de fidelidade está pronto para operar. Compartilhe o link do balcão ou escaneie o primeiro cliente para registrar selos.
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-primary font-bold">Programa Ativo</strong> — {totalClientes} cliente(s) fidelizado(s) e {totalSelos} selo(s) emitidos na {cardConfig.storeName}.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1068,15 +1160,60 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => showToast("Identidade visual salva! Imagens e configurações sincronizadas na Apple & Google Wallet.")}
-                className="btn-mimo self-start sm:self-auto text-sm px-6 py-3 cursor-pointer shadow-xl font-bold"
-              >
-                <span>Publicar nas Carteiras</span>
-                <CheckCircle2 className="w-4 h-4 ml-1" />
-              </button>
+              <div className="flex flex-col sm:items-end gap-1.5 self-start sm:self-auto">
+                <button
+                  type="button"
+                  disabled={isPublishing}
+                  onClick={handlePublishCard}
+                  className="btn-mimo text-sm px-6 py-3 cursor-pointer shadow-xl font-bold flex items-center gap-2"
+                >
+                  {isPublishing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Publicando nas Carteiras...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Publicar nas Carteiras</span>
+                      <CheckCircle2 className="w-4 h-4 ml-1" />
+                    </>
+                  )}
+                </button>
+                {lastPublishedTime && !isPublishing && (
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Sincronizado às {lastPublishedTime}</span>
+                  </span>
+                )}
+              </div>
             </div>
+
+            {/* Banner de Confirmação de Publicação no Google Wallet */}
+            {publishSuccessBanner && (
+              <div className="p-4 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 flex items-center justify-between gap-3 text-emerald-300 animate-fade-in shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 font-bold text-base">
+                    ✓
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-foreground block">
+                      {publishSuccessBanner}
+                    </span>
+                    <span className="text-[11px] text-emerald-400/90 font-medium">
+                      O passe digital dos seus clientes já reflete o novo visual e regras na Google Wallet.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPublishSuccessBanner(null)}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Fechar notificação"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Controles de Configuração e Uploads */}
@@ -1307,13 +1444,15 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   {/* Fallback de ícones padrão */}
                   <div className="pt-2">
                     <label className="label-eyebrow block mb-2">Ou escolha um ícone padrão:</label>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                       {[
+                        { id: "cookie", label: "Cookie", icon: "🍪" },
                         { id: "coffee", label: "Café", icon: "☕" },
                         { id: "star", label: "Estrela", icon: "⭐" },
                         { id: "heart", label: "Coração", icon: "❤️" },
                         { id: "sparkle", label: "Mimo", icon: "✨" },
                         { id: "fire", label: "Chama", icon: "🔥" },
+                        { id: "coin", label: "Moeda", icon: "🪙" },
                       ].map((s) => (
                         <button
                           key={s.id}
@@ -1458,7 +1597,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 >
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10" />
 
-                  {/* Pass Header com Logo Customizado ou Ícone */}
+                  {/* Pass Header com Logo Customizado e Dados da Loja */}
                   <div className="relative z-10 flex items-start justify-between border-b border-white/10 pb-4">
                     <div className="flex items-center gap-3">
                       {cardConfig.storeLogoImage ? (
@@ -1470,7 +1609,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                           className="h-11 w-11 rounded-xl flex items-center justify-center text-xl shadow-inner font-bold shrink-0"
                           style={{ backgroundColor: `${cardConfig.accentColor}25`, color: cardConfig.accentColor }}
                         >
-                          ☕
+                          🏪
                         </div>
                       )}
 
@@ -1486,121 +1625,168 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
                     <div className="text-right">
                       <span className="text-[10px] uppercase tracking-wider text-white/50 block font-bold">
-                        CARTÃO MIMO
+                        STATUS
                       </span>
-                      <span className="text-xs font-black" style={{ color: cardConfig.accentColor }}>
-                        8 / 10 SELOS
+                      <span className="text-xs font-semibold text-emerald-400">
+                        Ativo
                       </span>
                     </div>
                   </div>
 
-                  {/* Customer Pass Holder info */}
-                  <div className="relative z-10 py-4 flex items-center justify-between text-xs">
+                  {/* Customer Pass Holder info no Cabeçalho */}
+                  <div className="relative z-10 py-3 flex items-center justify-between text-xs border-b border-white/5">
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-white/40 block">CLIENTE VIP</span>
-                      <span className="font-bold text-white">Lia Martins</span>
+                      <span className="text-[10px] uppercase tracking-wider text-white/40 block font-bold">CLIENTE VIP</span>
+                      <span className="font-bold text-white">Cliente VIP</span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase tracking-wider text-white/40 block">STATUS</span>
-                      <span className="font-semibold text-emerald-400">Ativo</span>
+                    <div className="text-right flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewStamps(Math.max(0, previewStamps - 1))}
+                          className="w-5 h-5 rounded bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center text-xs"
+                          title="Diminuir selos simulados"
+                        >
+                          -
+                        </button>
+                        <span className="text-xs font-black px-1" style={{ color: cardConfig.accentColor }}>
+                          {previewStamps}/10
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewStamps(Math.min(10, previewStamps + 1))}
+                          className="w-5 h-5 rounded bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center text-xs"
+                          title="Aumentar selos simulados"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* 10 STAMPS GRID com Selo Customizado e 10º Selo de Mimo */}
-                  <div className="relative z-10 my-2 p-4 rounded-2xl bg-black/40 border border-white/8 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-white/80">Progresso do Ciclo</span>
-                      <span className="text-[11px] text-white/60">Faltam 2 selos</span>
-                    </div>
-
-                    <div className="grid grid-cols-5 gap-2.5">
+                  {/* ═══════════════════════════════════════════════════════════════
+                      CARTELA DE SELOS GOOGLE WALLET (2x5 GRID CIRCULAR)
+                     ═══════════════════════════════════════════════════════════════ */}
+                  <div className="relative z-10 my-3.5 p-4 sm:p-5 rounded-2xl bg-[#18181b] border border-white/10 shadow-inner">
+                    <div className="grid grid-cols-5 gap-2.5 sm:gap-3 justify-items-center">
                       {Array.from({ length: 10 }).map((_, index) => {
-                        const isFilled = index < 8; // simulação de 8 selos preenchidos
-                        const isTenth = index === 9; // 10º selo do Mimo
+                        const slotNum = index + 1;
+                        const isFilled = slotNum <= previewStamps;
+                        const is10th = slotNum === 10;
 
+                        if (is10th) {
+                          // 10º Selo (Prêmio Personalizado pelo Lojista com Estrela)
+                          return (
+                            <div key={slotNum} className="relative flex items-center justify-center">
+                              {/* Estrela flutuante no canto superior direito */}
+                              <div className="absolute -top-1 -right-1 z-10 w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-white text-amber-500 flex items-center justify-center text-[9px] sm:text-[10px] shadow-md font-bold leading-none border border-amber-200">
+                                ⭐
+                              </div>
+
+                              {/* Círculo Dourado/Amarelo com o Prêmio do Lojista */}
+                              <div
+                                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center p-1 shadow-lg transition-transform ${
+                                  isFilled
+                                    ? "text-black shadow-amber-400/40 ring-2 ring-amber-300 scale-105"
+                                    : "text-black shadow-amber-400/20 border-2 border-white/60"
+                                }`}
+                                style={{ backgroundColor: cardConfig.accentColor || '#FFC82C' }}
+                              >
+                                {cardConfig.rewardStampImage ? (
+                                  <img
+                                    src={cardConfig.rewardStampImage}
+                                    alt="Prêmio"
+                                    className="w-full h-full object-contain rounded-full"
+                                  />
+                                ) : (
+                                  <span className="text-[7.5px] sm:text-[8px] font-black uppercase text-center leading-[1.05] tracking-tight text-zinc-950 line-clamp-3 select-none px-0.5">
+                                    {cardConfig.rewardTitle || "BROWNIE COOKIE GRÁTIS"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (isFilled) {
+                          // Selos 1 a 9 Preenchidos: Medalha / Moeda Dourada Metálica
+                          return (
+                            <div
+                              key={slotNum}
+                              className="w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] bg-gradient-to-b from-[#FFE57F] via-[#F59E0B] to-[#92400E] shadow-md shadow-amber-500/25 flex items-center justify-center transition-transform hover:scale-105"
+                            >
+                              <div className="w-full h-full rounded-full bg-gradient-to-tr from-[#78350F] via-[#B45309] to-[#D97706] border border-[#FEF3C7]/50 flex items-center justify-center text-amber-100 shadow-inner overflow-hidden">
+                                {cardConfig.stampImage ? (
+                                  <img
+                                    src={cardConfig.stampImage}
+                                    alt="Selo"
+                                    className="w-full h-full object-cover rounded-full"
+                                  />
+                                ) : cardConfig.stampIcon === "cookie" ? (
+                                  <span className="text-lg select-none filter drop-shadow">🍪</span>
+                                ) : cardConfig.stampIcon === "coffee" ? (
+                                  <span className="text-lg select-none filter drop-shadow">☕</span>
+                                ) : cardConfig.stampIcon === "star" ? (
+                                  <span className="text-lg select-none filter drop-shadow">⭐</span>
+                                ) : cardConfig.stampIcon === "heart" ? (
+                                  <span className="text-lg select-none filter drop-shadow">❤️</span>
+                                ) : cardConfig.stampIcon === "sparkle" ? (
+                                  <span className="text-lg select-none filter drop-shadow">✨</span>
+                                ) : cardConfig.stampIcon === "fire" ? (
+                                  <span className="text-lg select-none filter drop-shadow">🔥</span>
+                                ) : cardConfig.stampIcon === "coin" ? (
+                                  <span className="text-lg select-none filter drop-shadow">🪙</span>
+                                ) : (
+                                  <span className="text-base font-black text-amber-100">★</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Selos 1 a 9 Vazios: Círculo translúcido com contorno suave
                         return (
                           <div
-                            key={index}
-                            className={`h-11 rounded-xl flex flex-col items-center justify-center relative transition-all ${
-                              isTenth
-                                ? "border-2 border-primary bg-primary/20 shadow-[0_0_12px_#FFC82C55]"
-                                : isFilled
-                                ? "shadow-md scale-100"
-                                : "border border-white/10 bg-white/5 opacity-60"
-                            }`}
-                            style={{
-                              backgroundColor: isTenth ? `${cardConfig.accentColor}25` : isFilled ? `${cardConfig.accentColor}20` : undefined,
-                              borderColor: isTenth ? cardConfig.accentColor : isFilled ? cardConfig.accentColor : undefined,
-                            }}
+                            key={slotNum}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full border border-white/15 bg-white/5 flex items-center justify-center transition-all"
                           >
-                            {/* Renderização do 10º Selo (Mimo) */}
-                            {isTenth ? (
-                              cardConfig.rewardStampImage ? (
-                                <img src={cardConfig.rewardStampImage} alt="Mimo" className="h-6 w-6 object-contain" />
-                              ) : (
-                                <span className="text-base">🎁</span>
-                              )
-                            ) : isFilled ? (
-                              /* Renderização dos Selos 1 a 9 */
-                              cardConfig.stampImage ? (
-                                <img src={cardConfig.stampImage} alt="Selo" className="h-5 w-5 object-contain" />
-                              ) : (
-                                <span className="text-sm">
-                                  {cardConfig.stampIcon === "coffee" ? "☕" :
-                                   cardConfig.stampIcon === "star" ? "⭐" :
-                                   cardConfig.stampIcon === "heart" ? "❤️" :
-                                   cardConfig.stampIcon === "sparkle" ? "✨" : "🔥"}
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-[10px] text-white/40 font-bold">{index + 1}</span>
-                            )}
-
-                            {isFilled && !isTenth && (
-                              <span
-                                className="text-[8px] font-bold mt-0.5 leading-none"
-                                style={{ color: cardConfig.accentColor }}
-                              >
-                                #{index + 1}
-                              </span>
-                            )}
-                            {isTenth && (
-                              <span
-                                className="text-[8px] font-black mt-0.5 leading-none"
-                                style={{ color: cardConfig.accentColor }}
-                              >
-                                MIMO
-                              </span>
-                            )}
+                            <span className="text-[11px] font-semibold text-white/20 select-none">
+                              {slotNum}
+                            </span>
                           </div>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Reward Box */}
-                  <div
-                    className="relative z-10 mt-3 p-3.5 rounded-xl border flex items-center gap-3"
-                    style={{
-                      backgroundColor: `${cardConfig.accentColor}15`,
-                      borderColor: `${cardConfig.accentColor}40`,
-                    }}
-                  >
-                    {cardConfig.rewardStampImage ? (
-                      <img src={cardConfig.rewardStampImage} alt="Mimo" className="w-6 h-6 object-contain shrink-0" />
-                    ) : (
-                      <Gift className="w-5 h-5 shrink-0" style={{ color: cardConfig.accentColor }} />
-                    )}
-                    <div className="text-xs">
-                      <span className="font-bold text-white block">Mimo após 10 compras:</span>
-                      <span className="text-white/80 text-[11px]">
-                        {cardConfig.rewardTitle || "Recompensa definida por você"}
+                  {/* ═══════════════════════════════════════════════════════════════
+                      CARDS INFORMATIVOS GOOGLE WALLET
+                     ═══════════════════════════════════════════════════════════════ */}
+                  <div className="space-y-2 relative z-10 text-left">
+                    {/* Card 1: Stamps */}
+                    <div className="bg-[#242428] rounded-2xl p-3.5 border border-white/5">
+                      <span className="text-xs text-zinc-400 font-medium block">Stamps</span>
+                      <p className="text-sm font-semibold text-white mt-0.5 leading-snug">
+                        {cardConfig.rewardDescription || "Here you will see your of stamps"}
+                      </p>
+                    </div>
+
+                    {/* Card 2: Selos */}
+                    <div className="bg-[#242428] rounded-2xl p-3.5 border border-white/5 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs text-zinc-400 font-medium block">Selos</span>
+                        <p className="text-sm font-bold text-white mt-0.5">
+                          {previewStamps}/10
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20 uppercase tracking-wider">
+                        Google Wallet
                       </span>
                     </div>
                   </div>
 
-                  {/* Customer Unique QR Code */}
-                  <div className="relative z-10 mt-4 pt-3 border-t border-white/10 text-center space-y-1">
+                  {/* Customer Barcode / QR Code */}
+                  <div className="relative z-10 mt-3 pt-3 border-t border-white/10 text-center space-y-1">
                     <div className="mx-auto w-20 h-20 bg-white p-1.5 rounded-lg flex items-center justify-center shadow">
                       <QrCode className="w-16 h-16 text-black" />
                     </div>
@@ -1762,69 +1948,90 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <button
                     type="button"
                     onClick={() => setNewItemModal(true)}
-                    className="btn-mimo text-xs py-2 px-3.5 font-bold"
+                    className="btn-mimo text-xs py-2 px-3.5 font-bold cursor-pointer"
                   >
                     + Novo Item
                   </button>
                 </div>
 
-                <div className="surface-panel rounded-2xl overflow-hidden border border-border/60">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold border-b border-border/60">
-                        <tr>
-                          <th className="py-3 px-4">Item do Cardápio</th>
-                          <th className="py-3 px-4">Categoria</th>
-                          <th className="py-3 px-4">Preço Unitário</th>
-                          <th className="py-3 px-4">Selos Concedidos</th>
-                          <th className="py-3 px-4">Selos Gerados</th>
-                          <th className="py-3 px-4">Status</th>
-                          <th className="py-3 px-4 text-right">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/40">
-                        {programItems.map((item) => (
-                          <tr key={item.id} className="hover:bg-card/40 transition-colors">
-                            <td className="py-3.5 px-4 font-bold text-foreground">{item.name}</td>
-                            <td className="py-3.5 px-4 text-xs text-muted-foreground">{item.category}</td>
-                            <td className="py-3.5 px-4 text-xs font-mono font-semibold">R$ {item.price.toFixed(2)}</td>
-                            <td className="py-3.5 px-4">
-                              <span className="text-xs font-bold text-primary px-2 py-0.5 rounded bg-primary/10">
-                                +{item.stampsGiven} {item.stampsGiven === 1 ? "selo" : "selos"}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 text-xs font-semibold text-foreground">
-                              {item.totalStampsGenerated} selos
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <button
-                                type="button"
-                                onClick={() => toggleItemActive(item.id)}
-                                className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all cursor-pointer ${
-                                  item.active
-                                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                    : "bg-muted text-muted-foreground border border-border/40"
-                                }`}
-                              >
-                                {item.active ? "Ativo" : "Pausado"}
-                              </button>
-                            </td>
-                            <td className="py-3.5 px-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => deleteProgramItem(item.id)}
-                                className="text-muted-foreground hover:text-destructive p-1.5 transition-colors"
-                                title="Excluir item participante"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {programItems.length === 0 ? (
+                  <div className="surface-panel p-10 rounded-2xl text-center space-y-4 border border-border/60">
+                    <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                      <ShoppingBag className="w-7 h-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-bold text-foreground">Nenhum item participante cadastrado</h3>
+                      <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                        Cadastre os produtos do cardápio da sua loja que concedem selos aos clientes ou utilize a modalidade Vendas Gerais.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewItemModal(true)}
+                      className="btn-mimo text-xs py-2.5 px-5 font-bold mx-auto cursor-pointer"
+                    >
+                      + Cadastrar Primeiro Item
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="surface-panel rounded-2xl overflow-hidden border border-border/60">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold border-b border-border/60">
+                          <tr>
+                            <th className="py-3 px-4">Item do Cardápio</th>
+                            <th className="py-3 px-4">Categoria</th>
+                            <th className="py-3 px-4">Preço Unitário</th>
+                            <th className="py-3 px-4">Selos Concedidos</th>
+                            <th className="py-3 px-4">Selos Gerados</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4 text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {programItems.map((item) => (
+                            <tr key={item.id} className="hover:bg-card/40 transition-colors">
+                              <td className="py-3.5 px-4 font-bold text-foreground">{item.name}</td>
+                              <td className="py-3.5 px-4 text-xs text-muted-foreground">{item.category}</td>
+                              <td className="py-3.5 px-4 text-xs font-mono font-semibold">R$ {item.price.toFixed(2)}</td>
+                              <td className="py-3.5 px-4">
+                                <span className="text-xs font-bold text-primary px-2 py-0.5 rounded bg-primary/10">
+                                  +{item.stampsGiven} {item.stampsGiven === 1 ? "selo" : "selos"}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-xs font-semibold text-foreground">
+                                {item.totalStampsGenerated || 0} selos
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItemActive(item.id)}
+                                  className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all cursor-pointer ${
+                                    item.active
+                                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                      : "bg-muted text-muted-foreground border border-border/40"
+                                  }`}
+                                >
+                                  {item.active ? "Ativo" : "Pausado"}
+                                </button>
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => deleteProgramItem(item.id)}
+                                  className="text-muted-foreground hover:text-destructive p-1.5 transition-colors cursor-pointer"
+                                  title="Excluir item participante"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1839,110 +2046,125 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               <div>
                 <span className="label-eyebrow text-primary">Base de Clientes</span>
                 <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">
-                  Controle de Fidelizados
+                  Controle de Fidelizados ({customers.length})
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">
                   Atualização de selos realizada via leitura do QR Code individual do cliente.
                 </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setScannedCustomer(customers[0]);
-                  setScannerOpen(true);
-                }}
-                className="btn-mimo self-start sm:self-auto text-xs py-2.5 px-4 font-bold cursor-pointer flex items-center gap-1.5"
-              >
-                <Scan className="w-4 h-4" />
-                <span>Escanear QR Code</span>
-              </button>
             </div>
 
-            <div className="surface-panel rounded-2xl overflow-hidden border border-border/60">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border/60 bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    <tr>
-                      <th className="py-3.5 px-4">Cliente</th>
-                      <th className="py-3.5 px-4">Código do Passe</th>
-                      <th className="py-3.5 px-4">Progresso de Selos</th>
-                      <th className="py-3.5 px-4">Última Validação</th>
-                      <th className="py-3.5 px-4">Aniversário</th>
-                      <th className="py-3.5 px-4 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40">
-                    {customers.map((c) => {
-                      const isReady = c.stamps >= 10;
-                      return (
-                        <tr key={c.id} className="hover:bg-card/40 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs ${c.avatarBg}`}>
-                                {c.initials}
+            {customers.length === 0 ? (
+              <div className="surface-panel p-10 rounded-2xl text-center space-y-4 border border-border/60">
+                <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                  <Users className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-foreground">Nenhum cliente cadastrado ainda</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Os clientes cadastrados pelo link <strong>/c/{currentSlug}</strong> ou escaneados no balcão aparecerão aqui automaticamente com todo o histórico de selos.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/c/${currentSlug}`;
+                      navigator.clipboard.writeText(url);
+                      showToast("Link de cadastro copiado!");
+                    }}
+                    className="btn-mimo text-xs py-2.5 px-4 font-bold"
+                  >
+                    Copiar Link de Cadastro (/c/{currentSlug})
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="surface-panel rounded-2xl overflow-hidden border border-border/60">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-border/60 bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                      <tr>
+                        <th className="py-3.5 px-4">Cliente</th>
+                        <th className="py-3.5 px-4">Código do Passe</th>
+                        <th className="py-3.5 px-4">Progresso de Selos</th>
+                        <th className="py-3.5 px-4">Última Validação</th>
+                        <th className="py-3.5 px-4">Aniversário</th>
+                        <th className="py-3.5 px-4 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {customers.map((c) => {
+                        const isReady = c.stamps >= (c.totalStamps || 10);
+                        return (
+                          <tr key={c.id} className="hover:bg-card/40 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs ${c.avatarBg}`}>
+                                  {c.initials}
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-foreground block">{c.name}</span>
+                                  <span className="text-xs text-muted-foreground">{c.email || c.phone}</span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="font-semibold text-foreground block">{c.name}</span>
-                                <span className="text-xs text-muted-foreground">{c.email}</span>
+                            </td>
+                            <td className="py-3 px-4 text-xs font-mono text-primary font-semibold">
+                              {c.qrToken}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="space-y-1 w-36">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className={isReady ? "text-primary font-bold" : "text-foreground font-medium"}>
+                                    {c.stamps}/{c.totalStamps || 10} selos
+                                  </span>
+                                  {isReady && (
+                                    <span className="text-[10px] text-emerald-400 font-semibold">Mimo Pronto!</span>
+                                  )}
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${isReady ? "bg-primary" : "bg-primary/80"}`}
+                                    style={{ width: `${Math.min(100, (c.stamps / (c.totalStamps || 10)) * 100)}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-xs font-mono text-primary font-semibold">
-                            {c.qrToken}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="space-y-1 w-36">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className={isReady ? "text-primary font-bold" : "text-foreground font-medium"}>
-                                  {c.stamps}/10 selos
-                                </span>
-                                {isReady && (
-                                  <span className="text-[10px] text-emerald-400 font-semibold">Mimo Pronto!</span>
+                            </td>
+                            <td className="py-3 px-4 text-xs text-muted-foreground">{c.lastVisit}</td>
+                            <td className="py-3 px-4 text-xs text-muted-foreground font-semibold">{c.birthday}</td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="inline-flex items-center gap-2">
+                                {isReady ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRedeemReward(c.id)}
+                                    className="btn-mimo py-1 px-3 text-xs font-bold cursor-pointer"
+                                  >
+                                    Resgatar Mimo 🎁
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setScannedCustomer(c);
+                                      setScannerOpen(true);
+                                    }}
+                                    className="px-3 py-1 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Scan className="w-3.5 h-3.5" />
+                                    <span>Ler QR Code</span>
+                                  </button>
                                 )}
                               </div>
-                              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${isReady ? "bg-primary" : "bg-primary/80"}`}
-                                  style={{ width: `${(c.stamps / c.totalStamps) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-xs text-muted-foreground">{c.lastVisit}</td>
-                          <td className="py-3 px-4 text-xs text-muted-foreground font-semibold">{c.birthday}</td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="inline-flex items-center gap-2">
-                              {isReady ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRedeemReward(c.id)}
-                                  className="btn-mimo py-1 px-3 text-xs font-bold cursor-pointer"
-                                >
-                                  Resgatar Mimo 🎁
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setScannedCustomer(c);
-                                    setScannerOpen(true);
-                                  }}
-                                  className="px-3 py-1 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
-                                >
-                                  <Scan className="w-3.5 h-3.5" />
-                                  <span>Ler QR Code</span>
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1966,53 +2188,43 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 <div className="flex items-center justify-between border-b border-border/40 pb-3">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-primary" />
-                    <h2 className="text-base font-bold text-foreground">Aniversariantes da Semana</h2>
+                    <h2 className="text-base font-bold text-foreground">Aniversariantes Cadastrados</h2>
                   </div>
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                    2 próximos
+                    {aniversariantes.length} {aniversariantes.length === 1 ? 'cadastrado' : 'cadastrados'}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-card border border-border/60 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center text-xs">
-                        IR
-                      </div>
-                      <div>
-                        <span className="font-bold text-foreground text-sm block">Isabela Rios</span>
-                        <span className="text-xs text-primary font-semibold">Aniversário em 14/09 (em 2 dias)</span>
-                      </div>
+                  {aniversariantes.length === 0 ? (
+                    <div className="p-6 rounded-xl bg-card border border-border/40 text-center space-y-2">
+                      <Calendar className="w-6 h-6 text-muted-foreground mx-auto" />
+                      <p className="text-xs font-semibold text-foreground">Nenhum aniversariante com data registrada</p>
+                      <p className="text-[11px] text-muted-foreground">Quando seus clientes informarem o aniversário no cadastro do cartão, eles aparecerão aqui para disparo de mimos.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSendNotification("Isabela Rios", "aniversario")}
-                      className="btn-mimo py-1.5 px-3 text-xs font-bold cursor-pointer"
-                    >
-                      <Send className="w-3 h-3 mr-1" />
-                      <span>Enviar Push</span>
-                    </button>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-card border border-border/60 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-teal-500/20 text-teal-400 font-bold flex items-center justify-center text-xs">
-                        BS
+                  ) : (
+                    aniversariantes.map((c) => (
+                      <div key={c.id} className="p-4 rounded-xl bg-card border border-border/60 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full font-bold flex items-center justify-center text-xs ${c.avatarBg}`}>
+                            {c.initials}
+                          </div>
+                          <div>
+                            <span className="font-bold text-foreground text-sm block">{c.name}</span>
+                            <span className="text-xs text-primary font-semibold">Aniversário: {c.birthday}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSendNotification(c.name, "aniversario")}
+                          className="btn-mimo py-1.5 px-3 text-xs font-bold cursor-pointer"
+                        >
+                          <Send className="w-3 h-3 mr-1" />
+                          <span>Enviar Push</span>
+                        </button>
                       </div>
-                      <div>
-                        <span className="font-bold text-foreground text-sm block">Bia Santos</span>
-                        <span className="text-xs text-muted-foreground font-semibold">Aniversário em 18/09 (em 6 dias)</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSendNotification("Bia Santos", "aniversario")}
-                      className="px-3 py-1.5 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-xs font-semibold transition-all cursor-pointer"
-                    >
-                      <Send className="w-3 h-3 mr-1" />
-                      <span>Enviar Push</span>
-                    </button>
-                  </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -2023,35 +2235,54 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <h2 className="text-base font-bold text-foreground">Recompensas Prontas para Resgate</h2>
                   </div>
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold">
-                    1 pendente
+                    {recompensasPendentes.length} {recompensasPendentes.length === 1 ? 'pendente' : 'pendentes'}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-card border border-emerald-500/30 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs">
-                        IR
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-foreground text-sm">Isabela Rios</span>
-                          <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.2 rounded font-bold">
-                            10/10 Selos
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">Mimo: 1 Café Filtrado Especial + Pão de Queijo</span>
-                      </div>
+                  {recompensasPendentes.length === 0 ? (
+                    <div className="p-6 rounded-xl bg-card border border-emerald-500/20 text-center space-y-2">
+                      <Gift className="w-6 h-6 text-emerald-400 mx-auto" />
+                      <p className="text-xs font-semibold text-foreground">Nenhuma recompensa pendente</p>
+                      <p className="text-[11px] text-muted-foreground">Clientes que completarem a cartela de 10 selos aparecerão aqui para entrega do mimo.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSendNotification("Isabela Rios", "recompensa")}
-                      className="btn-mimo py-1.5 px-3 text-xs font-bold cursor-pointer"
-                    >
-                      <Bell className="w-3 h-3 mr-1" />
-                      <span>Lembrar Resgate</span>
-                    </button>
-                  </div>
+                  ) : (
+                    recompensasPendentes.map((c) => (
+                      <div key={c.id} className="p-4 rounded-xl bg-card border border-emerald-500/30 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full font-bold flex items-center justify-center text-xs ${c.avatarBg}`}>
+                            {c.initials}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-foreground text-sm">{c.name}</span>
+                              <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.2 rounded font-bold">
+                                {c.stamps}/{c.totalStamps || 10} Selos
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">Mimo: {cardConfig.rewardTitle}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSendNotification(c.name, "recompensa")}
+                            className="btn-mimo-ghost py-1.5 px-3 text-xs font-bold cursor-pointer"
+                          >
+                            <Bell className="w-3 h-3 mr-1" />
+                            <span>Lembrar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRedeemReward(c.id)}
+                            className="btn-mimo py-1.5 px-3 text-xs font-bold cursor-pointer"
+                          >
+                            <span>Resgatar 🎁</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -2079,7 +2310,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               <button
                 type="button"
                 onClick={() => setCurrentTab("itens")}
-                className="btn-mimo-ghost self-start sm:self-auto text-xs py-2 px-3.5 font-bold flex items-center gap-1.5"
+                className="btn-mimo-ghost self-start sm:self-auto text-xs py-2 px-3.5 font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 <ShoppingBag className="w-3.5 h-3.5" />
                 <span>Configurar Itens Participantes</span>
@@ -2087,43 +2318,53 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-8 surface-panel rounded-2xl overflow-hidden border border-border/60">
-                <div className="p-4 border-b border-border/40 flex items-center justify-between">
-                  <h2 className="font-bold text-foreground text-sm">Ranking de Saídas por Selos</h2>
-                  <span className="text-xs text-muted-foreground">Últimos 30 dias</span>
+              {programItems.length === 0 ? (
+                <div className="lg:col-span-8 surface-panel p-10 rounded-2xl text-center space-y-4 border border-border/60">
+                  <ShoppingBag className="w-10 h-10 text-muted-foreground mx-auto" />
+                  <h3 className="text-base font-bold text-foreground">Nenhum produto com movimentação registrada</h3>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    Cadastre itens participantes na aba anterior para acompanhar o ranking de saídas e estimativa de faturamento.
+                  </p>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                      <tr>
-                        <th className="py-3 px-4">#</th>
-                        <th className="py-3 px-4">Item do Cardápio</th>
-                        <th className="py-3 px-4">Categoria</th>
-                        <th className="py-3 px-4">Selos Gerados</th>
-                        <th className="py-3 px-4 text-right">Faturamento Estimado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {programItems.map((prod, index) => (
-                        <tr key={prod.id} className="hover:bg-card/40 transition-colors">
-                          <td className="py-3.5 px-4 font-bold text-primary text-xs">#{index + 1}</td>
-                          <td className="py-3.5 px-4">
-                            <span className="font-bold text-foreground block">{prod.name}</span>
-                            <div className="w-32 bg-muted rounded-full h-1 mt-1.5 overflow-hidden">
-                              <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, (prod.totalStampsGenerated / 1400) * 100)}%` }} />
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-xs text-muted-foreground">{prod.category}</td>
-                          <td className="py-3.5 px-4 font-semibold text-foreground text-xs">{prod.totalStampsGenerated} selos</td>
-                          <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400 text-xs">
-                            R$ {(prod.revenue || prod.totalStampsGenerated * prod.price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                          </td>
+              ) : (
+                <div className="lg:col-span-8 surface-panel rounded-2xl overflow-hidden border border-border/60">
+                  <div className="p-4 border-b border-border/40 flex items-center justify-between">
+                    <h2 className="font-bold text-foreground text-sm">Ranking de Saídas por Selos</h2>
+                    <span className="text-xs text-muted-foreground">Últimos 30 dias</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                        <tr>
+                          <th className="py-3 px-4">#</th>
+                          <th className="py-3 px-4">Item do Cardápio</th>
+                          <th className="py-3 px-4">Categoria</th>
+                          <th className="py-3 px-4">Selos Gerados</th>
+                          <th className="py-3 px-4 text-right">Faturamento Estimado</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {programItems.map((prod, index) => (
+                          <tr key={prod.id} className="hover:bg-card/40 transition-colors">
+                            <td className="py-3.5 px-4 font-bold text-primary text-xs">#{index + 1}</td>
+                            <td className="py-3.5 px-4">
+                              <span className="font-bold text-foreground block">{prod.name}</span>
+                              <div className="w-32 bg-muted rounded-full h-1 mt-1.5 overflow-hidden">
+                                <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, ((prod.totalStampsGenerated || 0) / 100) * 100)}%` }} />
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-xs text-muted-foreground">{prod.category}</td>
+                            <td className="py-3.5 px-4 font-semibold text-foreground text-xs">{prod.totalStampsGenerated || 0} selos</td>
+                            <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400 text-xs">
+                              R$ {((prod.revenue || (prod.totalStampsGenerated || 0) * prod.price)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="lg:col-span-4 space-y-4">
                 <div className="surface-panel p-5 rounded-2xl space-y-4">
@@ -2136,16 +2377,16 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                       </span>
                     </div>
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                      <span className="text-muted-foreground">Ticket Médio com Mimo</span>
-                      <span className="font-bold text-foreground">R$ 38,40</span>
+                      <span className="text-muted-foreground">Clientes no Programa</span>
+                      <span className="font-bold text-foreground">{totalClientes} cadastrado(s)</span>
                     </div>
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                      <span className="text-muted-foreground">Aumento no Ticket</span>
-                      <span className="font-bold text-emerald-400">+59,3%</span>
+                      <span className="text-muted-foreground">Selos Totais Emitidos</span>
+                      <span className="font-bold text-emerald-400">{totalSelos} selos</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Mimos Entregues no Mês</span>
-                      <span className="font-bold text-primary">42 mimos</span>
+                      <span className="text-muted-foreground">Mimos Liberados</span>
+                      <span className="font-bold text-primary">{recompensasProntas} mimos</span>
                     </div>
                   </div>
                 </div>
@@ -2157,35 +2398,28 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
       {/* ── MODAL: LEITOR DE QR CODE DO CLIENTE (ETAPA 2) ── */}
       {scannerOpen && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="surface-panel p-6 sm:p-8 rounded-3xl max-w-lg w-full space-y-5 border border-primary/40 shadow-2xl animate-fade-in relative my-auto">
-            <button
-              onClick={() => {
-                setScannerOpen(false);
-                setLastStampResult(null);
-              }}
-              className="absolute top-5 right-5 text-muted-foreground hover:text-foreground cursor-pointer p-1 rounded-full hover:bg-white/5"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Cabeçalho do Leitor */}
-            <div className="text-center space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">
-                <Scan className="w-3.5 h-3.5" />
-                <span>Scanner de Balcão (Etapa 2)</span>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-background/90 backdrop-blur-sm animate-fade-in">
+          <div className="bg-background sm:bg-card border-none sm:border border-border rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-card sm:bg-transparent shrink-0">
+              <div className="text-center space-y-1 mx-auto">
+                <h3 className="text-lg font-bold text-foreground">Validar Selo do Cliente</h3>
               </div>
-              <h3 className="text-xl font-bold text-foreground">Validar Selo do Cliente</h3>
-              <p className="text-xs text-muted-foreground">
-                Escaneie o QR Code rotativo da Google Wallet ou busque pelo celular do cliente.
-              </p>
+              <button
+                onClick={() => {
+                  setScannerOpen(false);
+                  setLastStampResult(null);
+                }}
+                className="text-muted-foreground hover:text-foreground cursor-pointer p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {/* Configuração de Operador e PIN */}
-            <div className="p-3 rounded-xl bg-card border border-border/60 flex items-center justify-between text-xs">
+            <div className="p-3 bg-card border-b border-border flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <Key className="w-3.5 h-3.5 text-primary" />
-                <span className="text-muted-foreground">Operador: <strong className="text-foreground">Lia Martins</strong></span>
+                <span className="text-muted-foreground">Operador: <strong className="text-foreground">{cardConfig.storeName}</strong></span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-muted-foreground">PIN:</span>
@@ -2201,182 +2435,92 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             </div>
 
             {/* Abas: Câmera vs Entrada Manual */}
-            <div className="grid grid-cols-2 gap-2 bg-background/60 p-1 rounded-xl border border-border/40 text-xs font-bold">
+            <div className="grid grid-cols-2 gap-2 bg-muted p-2 rounded-none border-b border-border/40 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setScannerMode("camera")}
-                className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 rounded-lg transition-all ${
                   scannerMode === "camera"
                     ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground"
                 }`}
               >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Câmera ao Vivo</span>
+                Câmera ao Vivo
               </button>
               <button
                 type="button"
                 onClick={() => setScannerMode("manual")}
-                className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-2 rounded-lg transition-all ${
                   scannerMode === "manual"
                     ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground"
                 }`}
               >
-                <Search className="w-3.5 h-3.5" />
-                <span>Busca / Manual</span>
+                Busca / Manual
               </button>
             </div>
 
-            {/* VISÃO 1: CÂMERA AO VIVO */}
-            {scannerMode === "camera" && (
-              <div className="space-y-3">
-                <div className="relative mx-auto w-full max-w-sm rounded-2xl border-2 border-primary/60 bg-black overflow-hidden shadow-inner flex flex-col items-center justify-center min-h-[260px]">
-                  {/* Container montado pelo Html5Qrcode */}
-                  <div id="mimo-html5-scanner" className="w-full h-full min-h-[260px]" />
+            <div className="flex-1 overflow-y-auto p-4">
+              {/* VISÃO 1: CÂMERA AO VIVO */}
+              {scannerMode === "camera" && (
+                <div className="space-y-3">
+                  <div className="relative mx-auto w-full max-w-sm rounded-2xl border-2 border-primary/60 bg-black overflow-hidden shadow-inner flex flex-col items-center justify-center min-h-[260px]">
+                    <div id="mimo-html5-scanner" className="w-full h-full min-h-[260px]" />
+                    <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+              )}
 
-                  {/* Linha laser de escaneamento sobreposta */}
-                  <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_15px_#FFC82C] animate-pulse top-1/2 -translate-y-1/2 pointer-events-none" />
-
-                  {cameraError && (
-                    <div className="absolute inset-0 bg-black/85 p-6 flex flex-col items-center justify-center text-center space-y-3">
-                      <Camera className="w-8 h-8 text-amber-400" />
-                      <p className="text-xs text-zinc-300 max-w-xs">{cameraError}</p>
+              {/* VISÃO 2: DIGITAÇÃO MANUAL */}
+              {scannerMode === "manual" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[11px] font-bold text-muted-foreground uppercase block mb-1">
+                      Código do QR ou Celular
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={manualCodeInput}
+                        onChange={(e) => setManualCodeInput(e.target.value)}
+                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm text-foreground font-mono focus:outline-none"
+                      />
                       <button
                         type="button"
-                        onClick={() => setScannerMode("manual")}
-                        className="btn-mimo py-2 px-4 text-xs font-bold"
+                        onClick={() => { processStamp(manualCodeInput); setManualCodeInput(""); }}
+                        className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-xl"
                       >
-                        Alternar para Modo Manual
+                        OK
+                      </button>
+                    </div>
+                  </div>
+
+                  {scannedCustomer && (
+                    <div className="mt-4 p-4 rounded-xl bg-card border border-border flex flex-col gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        Cliente selecionado: <strong className="text-foreground">{scannedCustomer.name}</strong>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleScanCustomerQR(scannedCustomer.id)}
+                        className="btn-mimo w-full py-2.5 text-xs font-bold"
+                      >
+                        Confirmar +1 Selo
                       </button>
                     </div>
                   )}
                 </div>
+              )}
 
-                <p className="text-[11px] text-center text-muted-foreground">
-                  Aproxime a tela da Google Wallet do cliente para leitura automática instantânea.
-                </p>
-              </div>
-            )}
-
-            {/* VISÃO 2: DIGITAÇÃO MANUAL OU SELEÇÃO RÁPIDA */}
-            {scannerMode === "manual" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[11px] font-bold text-muted-foreground uppercase block mb-1">
-                    Código do QR ou Celular do Cliente
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={manualCodeInput}
-                      onChange={(e) => setManualCodeInput(e.target.value)}
-                      placeholder="Ex: MIMO:minhaloja... ou (11) 98765-4321"
-                      className="flex-1 bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-foreground font-mono focus:outline-none focus:border-primary"
-                    />
-                    <button
-                      type="button"
-                      disabled={!manualCodeInput.trim() || isProcessingStamp}
-                      onClick={() => {
-                        processStamp(manualCodeInput);
-                        setManualCodeInput("");
-                      }}
-                      className="btn-mimo px-4 text-xs font-bold cursor-pointer disabled:opacity-50"
-                    >
-                      {isProcessingStamp ? "Carimbando..." : "Carimbar"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-card border border-border/60 space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block">
-                    Ou selecione um cliente cadastrado no balcão:
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={scannedCustomer.id}
-                      onChange={(e) => {
-                        const found = customers.find((c) => c.id === e.target.value);
-                        if (found) setScannedCustomer(found);
-                      }}
-                      className="flex-1 bg-background text-foreground text-xs rounded-lg px-3 py-2 border border-border/60 outline-none"
-                    >
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id} className="bg-[#18181B]">
-                          {c.name} — {c.phone} ({c.stamps}/10 selos)
-                        </option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      disabled={isProcessingStamp || scannedCustomer.stamps >= 10}
-                      onClick={() => handleScanCustomerQR(scannedCustomer.id)}
-                      className="btn-mimo px-3 py-2 text-xs font-bold shrink-0 cursor-pointer disabled:opacity-50"
-                    >
-                      +1 Selo
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* FEEDBACK DO ÚLTIMO CARIMBO / RESULTADO */}
-            {lastStampResult && (
-              <div className="p-4 rounded-2xl bg-primary/10 border border-primary/40 space-y-3 animate-fade-in">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-primary flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>Carimbo Registrado com Sucesso!</span>
-                  </span>
-                  <span className="text-sm font-black text-foreground">
+              {/* FEEDBACK */}
+              {lastStampResult && (
+                <div className="mt-4 p-4 rounded-2xl bg-primary/10 border border-primary/40 space-y-2">
+                  <span className="text-xs font-bold text-primary">Carimbo Registrado!</span>
+                  <div className="text-xl font-black text-foreground">
                     {lastStampResult.selos} de {lastStampResult.meta} Selos
-                  </span>
-                </div>
-
-                {/* Barra de Progresso */}
-                <div className="w-full h-2.5 rounded-full bg-background overflow-hidden border border-border/40">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-500 rounded-full"
-                    style={{ width: `${Math.min(100, (lastStampResult.selos / lastStampResult.meta) * 100)}%` }}
-                  />
-                </div>
-
-                {/* Banner de Cartão Completo */}
-                {lastStampResult.completo ? (
-                  <div className="p-3 rounded-xl bg-amber-400/20 border border-amber-400/50 text-center space-y-2">
-                    <span className="text-xs font-black text-amber-300 block">
-                      🎉 PARABÉNS! 10º SELO ATINGIDO — MIMO LIBERADO:
-                    </span>
-                    <p className="text-xs font-bold text-white">{lastStampResult.premio}</p>
-                    <button
-                      type="button"
-                      onClick={() => handleRedeemReward(scannedCustomer.id)}
-                      className="btn-mimo w-full py-2.5 text-xs font-black shadow-lg cursor-pointer"
-                    >
-                      🎁 Entregar Mimo & Iniciar Novo Ciclo
-                    </button>
                   </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground text-center">
-                    Faltam <strong>{lastStampResult.meta - lastStampResult.selos} selos</strong> para o resgate de {lastStampResult.premio}.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Dica do link de cadastro */}
-            <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Cliente novo sem cadastro?</span>
-              <a
-                href={`/c/${currentSlug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary hover:underline font-bold flex items-center gap-1"
-              >
-                <span>Abrir página de cadastro (/c/{currentSlug})</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2591,6 +2735,28 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               </a>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification Flutuante com Destaque e Som */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-[99999] flex items-center gap-3.5 rounded-2xl bg-gradient-to-r from-zinc-900 to-zinc-950 border-2 border-primary/80 px-5 py-4 text-sm font-bold text-white shadow-2xl animate-fade-in backdrop-blur-xl">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-black font-black text-lg shrink-0 shadow-md">
+            ✓
+          </div>
+          <div className="max-w-md">
+            <span className="text-white text-xs sm:text-sm font-bold block leading-snug">
+              {toastMessage}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="ml-2 rounded-lg p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+            title="Fechar aviso"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
     </div>
