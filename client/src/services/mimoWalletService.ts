@@ -306,10 +306,24 @@ export async function publicarIdentidadeVisual(
 ): Promise<{ sucesso: boolean; message: string; heroUrl?: string; logoUrl?: string; classId?: string }> {
   const slug = (lojaSlug || 'minha-loja').toLowerCase().trim();
   const slugClean = slug.replace(/[^a-z0-9_-]/g, '_');
-  // Aceita a versão de quem chamou (o Estúdio precisa que o JSON do design, o
-  // classId e as URLs de imagem carreguem exatamente a mesma versão).
+  // A versão muda a cada publicação — ela serve para invalidar o cache das
+  // IMAGENS na carteira (entra como query param em getLogo/generateBanner).
   const versao = config?.versao ? String(config.versao) : String(Date.now());
-  const classId = `${WALLET_ISSUER_ID}.${slugClean}_${versao}`;
+
+  // O classId, ao contrário, precisa ser ESTÁVEL: um objeto de fidelidade não
+  // muda de classe depois de salvo. Gerar uma classe nova a cada publicação
+  // deixava os cartões já adicionados presos na classe antiga — eles nunca
+  // recebiam o novo logo/cores. Por isso reaproveitamos o classId existente.
+  let classId = `${WALLET_ISSUER_ID}.${slugClean}`;
+  try {
+    const snapAtual = await getDoc(doc(db, 'lojistas', slug));
+    const classIdExistente = snapAtual.exists() ? snapAtual.data()?.wallet?.classId : null;
+    if (classIdExistente) {
+      classId = classIdExistente;
+    }
+  } catch (err: any) {
+    console.warn('Não foi possível ler o classId atual, usando o padrão:', err?.message);
+  }
 
   // 1. URLs base para os endpoints dinâmicos na Cloud Function (Hero e Logo)
   // O banner e o logo agora são gerados/servidos on-the-fly para não depender de Storage inativo
@@ -433,22 +447,25 @@ export async function cadastrarClienteECartao(input: CustomerEnrollInput): Promi
 
 /**
  * Carimbar cartão via scanner do lojista.
- * Delega para a Cloud Function `carimbar`, que roda em transação, exige PIN
- * válido do operador e é a única fonte de verdade sobre o saldo de selos.
+ *
+ * Delega para a Cloud Function `carimbar`, que roda em transação e é a única
+ * fonte de verdade sobre o saldo de selos. A autorização vem da sessão do
+ * lojista (o token do Firebase Auth viaja junto automaticamente); o `pin` só
+ * é necessário em dispositivos de balcão que operam sem login.
  */
 export async function carimbarSelo(params: {
   qr: string;
-  pin: string;
+  pin?: string;
   lojaId: string;
 }): Promise<StampResult> {
   const carimbarFn = httpsCallable<
-    { qr?: string; pin: string; lojaId: string; manualCardId?: string },
+    { qr?: string; pin?: string; lojaId: string; manualCardId?: string },
     { cartaoId: string; selos: number; meta: number; completo: boolean; cliente: string; premio: string }
   >(functions, 'carimbar');
 
   const { data } = await carimbarFn({
     qr: params.qr,
-    pin: params.pin,
+    ...(params.pin ? { pin: params.pin } : {}),
     lojaId: params.lojaId,
   });
 
@@ -457,20 +474,24 @@ export async function carimbarSelo(params: {
 
 /**
  * Resgate do prêmio pelo lojista.
- * Delega para a Cloud Function `resgatar`, que zera os selos, avança o ciclo
- * e exige PIN válido do operador — nunca é feito escrevendo direto no Firestore.
+ * Delega para a Cloud Function `resgatar`, que zera os selos e avança o ciclo.
+ * Mesma regra de autorização do carimbo.
  */
 export async function resgatarPremio(params: {
   cartaoId: string;
-  pin: string;
+  pin?: string;
   lojaId: string;
 }): Promise<{ sucesso: boolean; premio: string; novoCiclo: number }> {
   const resgatarFn = httpsCallable<
-    { cartaoId: string; pin: string; lojaId: string },
+    { cartaoId: string; pin?: string; lojaId: string },
     { sucesso: boolean; premio: string; novoCiclo: number; cliente: string }
   >(functions, 'resgatar');
 
-  const { data } = await resgatarFn(params);
+  const { data } = await resgatarFn({
+    cartaoId: params.cartaoId,
+    ...(params.pin ? { pin: params.pin } : {}),
+    lojaId: params.lojaId,
+  });
   return { sucesso: data.sucesso, premio: data.premio, novoCiclo: data.novoCiclo };
 }
 

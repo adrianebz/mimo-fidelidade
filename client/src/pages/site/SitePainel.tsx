@@ -350,7 +350,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
     try {
       const result = await carimbarSelo({
         qr: qrText.trim(),
-        pin: operatorPin,
         lojaId: currentSlug,
       });
 
@@ -386,14 +385,28 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
   // Real Camera Lifecycle (Html5Qrcode)
   useEffect(() => {
-    if (!scannerOpen || scannerMode !== "camera") {
-      if (html5QrCodeRef.current) {
-        html5QrCodeRef.current.stop().catch(() => {}).finally(() => {
-          html5QrCodeRef.current?.clear();
-          html5QrCodeRef.current = null;
-          setCameraActive(false);
-        });
+    // Encerra a câmera com segurança: stop() rejeita se o scanner não estiver
+    // no estado SCANNING (já parado, pausado ou nem iniciado), e essa rejeição
+    // deixava a stream da câmera aberta e o vídeo congelado na tela.
+    const desligarCamera = async () => {
+      const scanner = html5QrCodeRef.current;
+      if (!scanner) return;
+      html5QrCodeRef.current = null;
+      try {
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
+      } catch (err) {
+        console.warn("Encerramento da câmera:", err);
       }
+      try {
+        scanner.clear();
+      } catch {}
+      setCameraActive(false);
+    };
+
+    if (!scannerOpen || scannerMode !== "camera") {
+      void desligarCamera();
       return;
     }
 
@@ -444,13 +457,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
     return () => {
       isMounted = false;
       clearTimeout(timer);
-      if (html5QrCodeRef.current) {
-        html5QrCodeRef.current.stop().catch(() => {}).finally(() => {
-          html5QrCodeRef.current?.clear();
-          html5QrCodeRef.current = null;
-          setCameraActive(false);
-        });
-      }
+      void desligarCamera();
     };
   }, [scannerOpen, scannerMode]);
 
@@ -466,7 +473,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
       const cartaoId = lastStampResult?.cartaoId || `${currentSlug}_${customerId}_1`;
       const res = await resgatarPremio({
         cartaoId,
-        pin: operatorPin,
         lojaId: currentSlug,
       });
 
@@ -1764,23 +1770,12 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               </button>
             </div>
 
-            {/* Configuração de Operador e PIN */}
-            <div className="p-3 bg-card border-b border-border flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Key className="w-3.5 h-3.5 text-primary" />
-                <span className="text-muted-foreground">Operador: <strong className="text-foreground">{cardConfig.storeName}</strong></span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">PIN:</span>
-                <input
-                  type="password"
-                  maxLength={4}
-                  value={operatorPin}
-                  onChange={(e) => setOperatorPin(e.target.value)}
-                  className="w-16 bg-background border border-border/60 rounded px-2 py-0.5 text-center font-mono font-bold text-primary focus:outline-none"
-                  placeholder="1234"
-                />
-              </div>
+            {/* Operador identificado pela própria sessão de login (sem PIN) */}
+            <div className="p-3 bg-card border-b border-border flex items-center gap-2 text-xs">
+              <Key className="w-3.5 h-3.5 text-primary" />
+              <span className="text-muted-foreground">
+                Operando como <strong className="text-foreground">{cardConfig.storeName}</strong>
+              </span>
             </div>
 
             {/* Abas: Câmera vs Entrada Manual */}
@@ -1810,15 +1805,18 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              {/* VISÃO 1: CÂMERA AO VIVO */}
-              {scannerMode === "camera" && (
-                <div className="space-y-3">
-                  <div className="relative mx-auto w-full max-w-sm rounded-2xl border-2 border-primary/60 bg-black overflow-hidden shadow-inner flex flex-col items-center justify-center min-h-[260px]">
-                    <div id="mimo-html5-scanner" className="w-full h-full min-h-[260px]" />
-                    <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+              {/* VISÃO 1: CÂMERA AO VIVO
+                  O container do scanner fica SEMPRE montado enquanto o modal
+                  estiver aberto e é apenas ocultado por CSS. Desmontá-lo ao
+                  trocar de aba arrancava do DOM o <video> que a html5-qrcode
+                  ainda controlava: o stop() falhava, a câmera não era liberada
+                  e a tela ficava preta. */}
+              <div className={`space-y-3 ${scannerMode === "camera" ? "" : "hidden"}`}>
+                <div className="relative mx-auto w-full max-w-sm rounded-2xl border-2 border-primary/60 bg-black overflow-hidden shadow-inner flex flex-col items-center justify-center min-h-[260px]">
+                  <div id="mimo-html5-scanner" className="w-full h-full min-h-[260px]" />
+                  <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
-              )}
+              </div>
 
               {/* VISÃO 2: DIGITAÇÃO MANUAL */}
               {scannerMode === "manual" && (

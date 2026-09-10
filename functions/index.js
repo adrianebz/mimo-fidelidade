@@ -558,28 +558,50 @@ exports.carimbar = onCall(
         throw new HttpsError('failed-precondition', 'Operação bloqueada: o lojista possui pendência financeira. Regularize a assinatura para registrar selos.');
       }
 
-      // Validação de operador e PIN — o PIN é OBRIGATÓRIO e identifica o operador
-      // (não confiamos mais em req.auth?.uid nem no "primeiro operador da loja",
-      // que permitiam carimbar sem nenhuma credencial).
-      if (!pin) {
-        throw new HttpsError('invalid-argument', 'PIN do operador é obrigatório para registrar o selo.');
+      // Autorização: sessão autenticada do dono da loja OU PIN de operador.
+      //
+      // O PIN existia porque não havia login de verdade. Agora que o lojista
+      // entra com Firebase Auth, a própria sessão (claims role/lojaId) já prova
+      // quem é — exigir PIN além disso seria atrito sem ganho. O PIN continua
+      // valendo para dispositivos de balcão que operam sem login.
+      const claims = req.auth?.token || {};
+      const donoAutenticado =
+        claims.role === 'admin' || (claims.role === 'lojista' && claims.lojaId === lojaId);
+
+      let uid = req.auth?.uid || 'balcao';
+      let operador = { nome: donoAutenticado ? 'Lojista' : 'Balcão' };
+
+      if (!donoAutenticado) {
+        if (!pin) {
+          throw new HttpsError(
+            'permission-denied',
+            'Entre como lojista ou informe o PIN do operador para registrar o selo.'
+          );
+        }
+        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
+        if (!entry) {
+          throw new HttpsError('permission-denied', 'PIN do operador incorreto.');
+        }
+        uid = entry[0];
+        operador = entry[1];
+      } else if (pin) {
+        // Sessão do lojista + PIN: usa o PIN só para saber qual operador atendeu
+        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
+        if (entry) {
+          uid = entry[0];
+          operador = entry[1];
+        }
       }
-      const operadoresMap = loja.operadores || {};
-      const operadorEntry = Object.entries(operadoresMap).find(([, op]) => verificaPin(pin, op?.pin));
-      if (!operadorEntry) {
-        throw new HttpsError('permission-denied', 'PIN do operador incorreto.');
-      }
-      const [uid, operador] = operadorEntry;
 
       // Validação do TOTP rotativo, quando o código vem da leitura do QR da Wallet.
       // NÃO bloqueia o carimbo: a Google Wallet não suporta atualizar a imagem do
       // barcode em tempo real sem Smart Tap/NFC, então um código "desatualizado" é
-      // esperado — a barreira de segurança real é o PIN do operador acima.
+      // esperado — quem autoriza a operação é a sessão/PIN validados acima.
       if (codigo && cartao.totpSecret) {
         authenticator.options = { window: 2, step: 30 };
         const valido = authenticator.verify({ token: codigo, secret: cartao.totpSecret });
         if (!valido) {
-          console.warn(`TOTP desatualizado para o cartão ${cartaoId} (aceito mesmo assim; PIN já validou o operador).`);
+          console.warn(`TOTP desatualizado para o cartão ${cartaoId} (aceito mesmo assim).`);
         }
       }
 
@@ -751,15 +773,34 @@ exports.resgatar = onCall(
       const lojaDoc = await tx.get(db.doc(`lojistas/${lojaId}`));
       const loja = lojaDoc.data() || {};
 
-      if (!pin) {
-        throw new HttpsError('invalid-argument', 'PIN do operador é obrigatório para resgatar o prêmio.');
+      // Mesma autorização do carimbo: sessão do dono da loja OU PIN de operador.
+      const claims = req.auth?.token || {};
+      const donoAutenticado =
+        claims.role === 'admin' || (claims.role === 'lojista' && claims.lojaId === lojaId);
+
+      let uid = req.auth?.uid || 'balcao';
+      let operador = { nome: donoAutenticado ? 'Lojista' : 'Balcão' };
+
+      if (!donoAutenticado) {
+        if (!pin) {
+          throw new HttpsError(
+            'permission-denied',
+            'Entre como lojista ou informe o PIN do operador para resgatar o prêmio.'
+          );
+        }
+        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
+        if (!entry) {
+          throw new HttpsError('permission-denied', 'PIN incorreto.');
+        }
+        uid = entry[0];
+        operador = entry[1];
+      } else if (pin) {
+        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
+        if (entry) {
+          uid = entry[0];
+          operador = entry[1];
+        }
       }
-      const operadoresMap = loja.operadores || {};
-      const operadorEntry = Object.entries(operadoresMap).find(([, op]) => verificaPin(pin, op?.pin));
-      if (!operadorEntry) {
-        throw new HttpsError('permission-denied', 'PIN incorreto.');
-      }
-      const [uid, operador] = operadorEntry;
 
       const premio = loja.layout?.premio || '1 Mimo Especial';
 
@@ -881,7 +922,12 @@ function bufferToStream(buffer) {
   return stream;
 }
 
-// Endpoint Dinâmico 1: Retorna o Logotipo da Loja a partir do Base64 salvo no Firestore
+// Endpoint Dinâmico 1: Retorna o Logotipo da Loja
+//
+// Ordem de precedência: o logo enviado no Estúdio (design.brand.logoDataUrl),
+// depois o campo legado layout.logoBase64 e, por fim, uma URL externa já
+// cadastrada. Antes esta função só olhava o campo legado — por isso o logo
+// enviado pelo lojista no Estúdio nunca aparecia no cartão da carteira.
 exports.getLogo = onRequest({ cors: true, memory: '512MiB' }, async (req, res) => {
   const lojaId = req.query.lojaId;
   if (!lojaId) return res.status(400).send('lojaId required');
@@ -889,13 +935,26 @@ exports.getLogo = onRequest({ cors: true, memory: '512MiB' }, async (req, res) =
     const db = admin.firestore();
     const docSnap = await db.doc(`lojistas/${lojaId}`).get();
     if (!docSnap.exists) return res.status(404).send('Not found');
-    const layout = docSnap.data().layout || {};
-    if (layout.logoBase64) {
-      const b64Data = layout.logoBase64.split(',')[1] || layout.logoBase64;
+
+    const data = docSnap.data() || {};
+    const layout = data.layout || {};
+    const design = data.design || null;
+
+    const base64 = design?.brand?.logoDataUrl || layout.logoBase64;
+    if (base64 && String(base64).includes('base64,')) {
+      const b64Data = String(base64).split(',')[1];
       const buffer = Buffer.from(b64Data, 'base64');
-      res.setHeader('Content-Type', layout.logoBase64.includes('jpeg') ? 'image/jpeg' : 'image/png');
+      const isSvg = String(base64).includes('image/svg');
+      const isJpeg = String(base64).includes('jpeg') || String(base64).includes('jpg');
+      res.setHeader('Content-Type', isSvg ? 'image/svg+xml' : isJpeg ? 'image/jpeg' : 'image/png');
       res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache no Wallet
       return res.send(buffer);
+    }
+
+    // Sem upload: usa a URL externa cadastrada, se houver
+    const urlExterna = design?.brand?.logoUrl || layout.logoUrl;
+    if (urlExterna && String(urlExterna).startsWith('http') && !String(urlExterna).includes('mimo-logo.jpg')) {
+      return res.redirect(urlExterna);
     }
   } catch (err) {
     console.error(err);
