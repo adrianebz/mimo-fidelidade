@@ -36,6 +36,10 @@ export interface SeedMerchantData {
     maxSelosDiaPorCliente: number;
     validadeDias: number;
     exigirSMS: boolean;
+    /** Selos creditados por atendimento, por padrão. */
+    selosPorLeitura?: number;
+    /** Teto de selos por atendimento (trava contra erro do operador). */
+    maxSelosPorLeitura?: number;
   };
   wallet: {
     classId: string;
@@ -43,6 +47,8 @@ export interface SeedMerchantData {
   };
   operadores: Record<string, { nome: string; pin: string; papel: string }>;
   criadoEm: string;
+  /** JSON completo do Estúdio de Cartões, quando a loja já publicou por lá. */
+  design?: any;
 }
 
 export const SEED_MERCHANTS: Record<string, SeedMerchantData> = {

@@ -514,7 +514,7 @@ exports.criarCartao = onCall(
 exports.carimbar = onCall(
   { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
   async (req) => {
-    const { qr, pin, lojaId: lojaIdParam, manualCardId } = req.data || {};
+    const { qr, pin, lojaId: lojaIdParam, manualCardId, quantidade } = req.data || {};
 
     let cartaoId = manualCardId;
     let codigo = null;
@@ -620,13 +620,42 @@ exports.carimbar = onCall(
         throw new HttpsError('failed-precondition', `Aguarde ${restanteMin} min para novo carimbo neste cartão.`);
       }
 
-      const novosSelos = (cartao.selos || 0) + 1;
-      const completo = novosSelos >= (cartao.meta || 10);
+      // Quantos selos esta operação credita (uma compra pode valer vários).
+      // O teto vem da configuração da loja e protege contra erro de digitação
+      // do operador — sem ele, um "50" sem querer zeraria a cartela do cliente.
+      const meta = cartao.meta || 10;
+      const maxPorLeitura = Math.max(
+        1,
+        Number(loja.design?.stamps?.maxPerScan ?? loja.regras?.maxSelosPorLeitura ?? 10)
+      );
+      const pedido = Math.floor(Number(quantidade ?? loja.design?.stamps?.perScan ?? 1));
+
+      if (!Number.isFinite(pedido) || pedido < 1) {
+        throw new HttpsError('invalid-argument', 'Quantidade de selos inválida.');
+      }
+      if (pedido > maxPorLeitura) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Máximo de ${maxPorLeitura} selos por operação nesta loja.`
+        );
+      }
+
+      const selosAntes = cartao.selos || 0;
+      const espacoNaCartela = Math.max(0, meta - selosAntes);
+      const creditados = Math.min(pedido, espacoNaCartela);
+      // O que não coube não é perdido: fica reservado para o próximo ciclo,
+      // aplicado automaticamente quando o prêmio for resgatado.
+      const excedente = pedido - creditados;
+
+      const novosSelos = selosAntes + creditados;
+      const completo = novosSelos >= meta;
       const novoStatus = completo ? 'completo' : 'ativo';
+      const pendentesTotal = (cartao.selosPendentes || 0) + excedente;
 
       tx.update(cartaoRef, {
         selos: novosSelos,
         status: novoStatus,
+        selosPendentes: pendentesTotal,
         ultimoSeloEm: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -649,7 +678,10 @@ exports.carimbar = onCall(
         tipo: codigo ? 'selo_qr' : 'selo_manual',
         operadorUid: uid,
         operadorNome: operador.nome || 'Balcão',
-        selosAntes: cartao.selos || 0,
+        quantidadeSolicitada: pedido,
+        quantidadeCreditada: creditados,
+        excedenteReservado: excedente,
+        selosAntes,
         selosDepois: novosSelos,
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -657,8 +689,11 @@ exports.carimbar = onCall(
       return {
         cartaoId,
         selos: novosSelos,
-        meta: cartao.meta || 10,
+        meta,
         completo,
+        creditados,
+        excedente,
+        selosPendentes: pendentesTotal,
         cliente: cartao.clienteId,
         premio: loja.layout?.premio || '1 Mimo Especial',
       };
@@ -817,12 +852,20 @@ exports.resgatar = onCall(
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 2. Recicla o mesmo objeto na Google Wallet: zera selos e avança ciclo
+      // 2. Recicla o mesmo objeto na Google Wallet: avança o ciclo e já aplica
+      // os selos que sobraram de uma compra maior que a cartela (ex.: cliente
+      // com 8/10 comprou 5 de uma vez — os 3 excedentes entram no novo ciclo).
       const novoCiclo = (cartao.ciclo || 1) + 1;
+      const metaCartao = cartao.meta || 10;
+      const pendentes = cartao.selosPendentes || 0;
+      const selosIniciais = Math.min(pendentes, metaCartao);
+      const pendentesRestantes = Math.max(0, pendentes - selosIniciais);
+
       tx.update(cartaoRef, {
-        selos: 0,
+        selos: selosIniciais,
         ciclo: novoCiclo,
-        status: 'ativo',
+        status: selosIniciais >= metaCartao ? 'completo' : 'ativo',
+        selosPendentes: pendentesRestantes,
         ultimoResgateEm: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -831,8 +874,8 @@ exports.resgatar = onCall(
         tx.set(
           db.doc(`lojistas/${lojaId}/clientes/${cartao.clienteId}`),
           {
-            stamps: 0,
-            status: 'ativo',
+            stamps: selosIniciais,
+            status: selosIniciais >= metaCartao ? 'completo' : 'ativo',
             lastVisit: new Date().toISOString(),
           },
           { merge: true }
@@ -847,6 +890,7 @@ exports.resgatar = onCall(
         operadorNome: operador.nome,
         premio,
         cicloResgatado: cartao.ciclo || 1,
+        selosTransportados: selosIniciais,
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -854,6 +898,7 @@ exports.resgatar = onCall(
         sucesso: true,
         premio,
         novoCiclo,
+        selosTransportados: selosIniciais,
         cliente: cartao.clienteId,
       };
     });

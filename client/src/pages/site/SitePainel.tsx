@@ -93,6 +93,10 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
   const [scanningEffect, setScanningEffect] = useState(false);
   const [scannerMode, setScannerMode] = useState<"camera" | "manual">("camera");
   const [operatorPin, setOperatorPin] = useState("1234");
+  // Quantos selos a próxima leitura vai creditar (uma compra pode valer vários).
+  const [selosPorLeitura, setSelosPorLeitura] = useState(1);
+  const [maxSelosPorLeitura, setMaxSelosPorLeitura] = useState(10);
+  const [permiteAlterarQuantidade, setPermiteAlterarQuantidade] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState("");
@@ -198,6 +202,14 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
       if (loja.statusFinanceiro) {
         setFinancialStatus(loja.statusFinanceiro);
       }
+
+      // Regras de quantidade por atendimento, definidas no Estúdio
+      const design = (loja as any).design;
+      const padrao = design?.stamps?.perScan ?? (loja.regras as any)?.selosPorLeitura ?? 1;
+      const teto = design?.stamps?.maxPerScan ?? (loja.regras as any)?.maxSelosPorLeitura ?? 10;
+      setSelosPorLeitura(Math.max(1, Math.min(padrao, teto)));
+      setMaxSelosPorLeitura(Math.max(1, teto));
+      setPermiteAlterarQuantidade(design?.stamps?.allowOperatorOverride !== false);
       if (loja.nome) {
         setCardConfig((prev) => ({
           ...prev,
@@ -351,6 +363,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
       const result = await carimbarSelo({
         qr: qrText.trim(),
         lojaId: currentSlug,
+        quantidade: selosPorLeitura,
       });
 
       setLastStampResult(result);
@@ -371,8 +384,15 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
         })
       );
 
+      const creditados = result.creditados ?? 1;
+      const sufixoExcedente = result.excedente
+        ? ` (${result.excedente} guardado${result.excedente > 1 ? 's' : ''} para o próximo ciclo)`
+        : '';
+
       if (result.completo) {
-        showToast(`🎉 10º SELO! Prêmio liberado: ${result.premio}!`);
+        showToast(`🎉 Cartela completa! Prêmio liberado: ${result.premio}!${sufixoExcedente}`);
+      } else if (creditados > 1) {
+        showToast(`✅ ${creditados} selos registrados — ${result.selos}/${result.meta}${sufixoExcedente}`);
       } else {
         showToast(`✅ Selo ${result.selos}/${result.meta} registrado com sucesso!`);
       }
@@ -1776,6 +1796,48 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               <span className="text-muted-foreground">
                 Operando como <strong className="text-foreground">{cardConfig.storeName}</strong>
               </span>
+            </div>
+
+            {/* Quantos selos esta leitura vai creditar */}
+            <div className="px-3 py-2.5 bg-card border-b border-border flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-foreground block">Selos por atendimento</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {permiteAlterarQuantidade
+                    ? `Ajuste se o cliente levar vários itens (até ${maxSelosPorLeitura})`
+                    : "Quantidade fixada pelo Estúdio"}
+                </span>
+              </div>
+
+              {permiteAlterarQuantidade ? (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    aria-label="Diminuir selos"
+                    onClick={() => setSelosPorLeitura((n) => Math.max(1, n - 1))}
+                    disabled={selosPorLeitura <= 1}
+                    className="w-8 h-8 rounded-lg border border-border bg-background text-foreground font-bold disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center font-mono font-black text-base text-primary">
+                    {selosPorLeitura}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Aumentar selos"
+                    onClick={() => setSelosPorLeitura((n) => Math.min(maxSelosPorLeitura, n + 1))}
+                    disabled={selosPorLeitura >= maxSelosPorLeitura}
+                    className="w-8 h-8 rounded-lg border border-border bg-background text-foreground font-bold disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                <span className="font-mono font-black text-base text-primary shrink-0">
+                  {selosPorLeitura}
+                </span>
+              )}
             </div>
 
             {/* Abas: Câmera vs Entrada Manual */}

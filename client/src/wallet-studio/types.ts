@@ -64,6 +64,18 @@ export interface StampsConfig {
   showNumbersOnEmpty: boolean;
   /** Colunas da grade de selos na prévia e no banner. */
   columns: number;
+  /**
+   * Quantos selos cada leitura credita por padrão. Serve como valor inicial
+   * no balcão — útil para lojas em que uma compra sempre vale mais de um selo.
+   */
+  perScan: number;
+  /**
+   * Teto de selos por operação. Protege contra erro de digitação do operador:
+   * sem ele, um "50" sem querer completaria a cartela do cliente de uma vez.
+   */
+  maxPerScan: number;
+  /** Permite que o operador altere a quantidade na hora do atendimento. */
+  allowOperatorOverride: boolean;
 }
 
 export interface RewardConfig {

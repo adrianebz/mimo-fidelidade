@@ -62,6 +62,8 @@ function legacyLayoutToDesign(data: any): CardDesign {
       iconKey: layout.stampIcon || base.stamps.iconKey,
       imageDataUrl: layout.stampImageBase64 || layout.stampImage || null,
       fill: layout.stampImageBase64 || layout.stampImage ? 'image' : base.stamps.fill,
+      perScan: data?.regras?.selosPorLeitura || base.stamps.perScan,
+      maxPerScan: data?.regras?.maxSelosPorLeitura || base.stamps.maxPerScan,
     },
     reward: {
       ...base.reward,
@@ -141,7 +143,13 @@ export async function publishDesign(slug: string, design: CardDesign): Promise<P
       doc(db, 'lojistas', slug),
       {
         design: published,
-        regras: { meta: published.stamps.total },
+        regras: {
+          meta: published.stamps.total,
+          // Espelhado em `regras` porque é lá que as Cloud Functions procuram
+          // os limites de operação do balcão.
+          selosPorLeitura: published.stamps.perScan,
+          maxSelosPorLeitura: published.stamps.maxPerScan,
+        },
         // setDoc com merge faz merge profundo de mapas aninhados, então estes
         // campos são acrescentados ao `layout` sem apagar o que já existe.
         // (Chave com ponto só vira caminho aninhado em updateDoc, não aqui.)

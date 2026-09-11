@@ -211,6 +211,53 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
         options={[3, 4, 5, 6].map((n) => ({ value: n, label: `${n} por linha` }))}
       />
     </Field>
+
+    <div className="rounded-2xl border border-border/60 bg-background/40 p-4 space-y-4">
+      <div>
+        <span className="label-eyebrow block">Selos por atendimento</span>
+        <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+          Quando um cliente leva vários itens de uma vez, o balcão credita tudo numa
+          operação só. Se a cartela encher no meio do caminho, o que sobra fica
+          guardado e entra automaticamente no ciclo seguinte — o cliente não perde selos.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Padrão por leitura" hint="Valor que já vem preenchido no balcão.">
+          <Segmented
+            value={design.stamps.perScan}
+            onChange={(perScan) => patch({ stamps: { ...design.stamps, perScan } })}
+            options={[1, 2, 3, 5].map((n) => ({ value: n, label: String(n) }))}
+          />
+        </Field>
+
+        <Field label="Máximo por operação" hint="Trava de segurança contra erro de digitação.">
+          <TextInput
+            type="number"
+            min={1}
+            max={99}
+            value={design.stamps.maxPerScan}
+            onChange={(e) =>
+              patch({
+                stamps: {
+                  ...design.stamps,
+                  maxPerScan: Math.min(99, Math.max(1, Number(e.target.value) || 1)),
+                },
+              })
+            }
+          />
+        </Field>
+      </div>
+
+      <Toggle
+        checked={design.stamps.allowOperatorOverride}
+        onChange={(allowOperatorOverride) =>
+          patch({ stamps: { ...design.stamps, allowOperatorOverride } })
+        }
+        label="Operador pode alterar a quantidade"
+        description="Desligue para fixar sempre o padrão acima"
+      />
+    </div>
   </Section>
 );
 

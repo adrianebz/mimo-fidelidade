@@ -59,6 +59,12 @@ export interface StampResult {
   completo: boolean;
   cliente: string;
   premio: string;
+  /** Quantos selos entraram de fato nesta cartela. */
+  creditados?: number;
+  /** Selos que não couberam e ficaram reservados para o próximo ciclo. */
+  excedente?: number;
+  /** Total acumulado à espera do próximo ciclo. */
+  selosPendentes?: number;
 }
 
 export interface LojistaFirestoreData {
@@ -242,7 +248,11 @@ export async function obterDadosLojista(slug: string): Promise<SeedMerchantData>
           maxSelosDiaPorCliente: data.regras?.maxSelosDiaPorCliente || 2,
           validadeDias: data.regras?.validadeDias || 180,
           exigirSMS: data.regras?.exigirSMS || false,
-        },
+          selosPorLeitura: data.regras?.selosPorLeitura || 1,
+          maxSelosPorLeitura: data.regras?.maxSelosPorLeitura || 10,
+        } as any,
+        // JSON completo do Estúdio (quando a loja já publicou por lá)
+        design: data.design || null,
         wallet: {
           classId: classIdCalculado,
           classSincronizadaEm: data.wallet?.classSincronizadaEm || new Date().toISOString(),
@@ -457,15 +467,18 @@ export async function carimbarSelo(params: {
   qr: string;
   pin?: string;
   lojaId: string;
+  /** Quantos selos creditar nesta operação (ex.: cliente levou 5 itens). */
+  quantidade?: number;
 }): Promise<StampResult> {
   const carimbarFn = httpsCallable<
-    { qr?: string; pin?: string; lojaId: string; manualCardId?: string },
-    { cartaoId: string; selos: number; meta: number; completo: boolean; cliente: string; premio: string }
+    { qr?: string; pin?: string; lojaId: string; manualCardId?: string; quantidade?: number },
+    StampResult
   >(functions, 'carimbar');
 
   const { data } = await carimbarFn({
     qr: params.qr,
     ...(params.pin ? { pin: params.pin } : {}),
+    ...(params.quantidade && params.quantidade > 1 ? { quantidade: params.quantidade } : {}),
     lojaId: params.lojaId,
   });
 

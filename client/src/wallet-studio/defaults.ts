@@ -94,6 +94,9 @@ export function createDefaultDesign(storeName = 'Minha Loja'): CardDesign {
       imageDataUrl: null,
       showNumbersOnEmpty: true,
       columns: 5,
+      perScan: 1,
+      maxPerScan: 10,
+      allowOperatorOverride: true,
     },
     reward: {
       label: 'Cookie Grátis',
