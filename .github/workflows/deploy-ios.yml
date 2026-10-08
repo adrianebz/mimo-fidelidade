@@ -129,7 +129,13 @@ jobs:
 
       - name: Compilar Arquivo .xcarchive (Xcode Release)
         run: |
-          xcodebuild -workspace ios/App/App.xcworkspace \
+          if [ -d "ios/App/App.xcworkspace" ]; then
+            TARGET="-workspace ios/App/App.xcworkspace"
+          else
+            TARGET="-project ios/App/App.xcodeproj"
+          fi
+          echo "Compilando com alvo: $TARGET"
+          xcodebuild $TARGET \
                      -scheme App \
                      -configuration Release \
                      -archivePath "$RUNNER_TEMP/App.xcarchive" \
