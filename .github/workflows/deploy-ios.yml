@@ -96,15 +96,26 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
 
-          # 2. Decodifica e importa certificado p12
-          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          # 2. Decodifica e importa certificado p12 de forma robusta via Node.js
+          node -e "fs.writeFileSync(process.env.RUNNER_TEMP + '/cert.p12', Buffer.from(process.env.CERT_P12_BASE64, 'base64'))"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
           # 3. Instala Perfil de Provisionamento (.mobileprovision)
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROV_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/embedded.mobileprovision
+          PROV_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROV_DIR"
+          node -e "
+            const fs = require('fs');
+            const buf = Buffer.from(process.env.PROV_PROFILE_BASE64, 'base64');
+            fs.writeFileSync('$PROV_DIR/embedded.mobileprovision', buf);
+            const text = buf.toString('latin1');
+            const match = text.match(/<key>UUID<\/key>\s*<string>([^<]+)<\/string>/);
+            if (match && match[1]) {
+              fs.writeFileSync('$PROV_DIR/' + match[1] + '.mobileprovision', buf);
+              console.log('Perfil instalado com UUID: ' + match[1]);
+            }
+          "
 
           # Remove o p12 temporário do disco
           rm -f "$RUNNER_TEMP/cert.p12"
@@ -116,8 +127,12 @@ jobs:
                      -configuration Release \
                      -archivePath "$RUNNER_TEMP/App.xcarchive" \
                      -destination "generic/platform=iOS" \
-                     archive \
-                     CODE_SIGN_STYLE=Manual
+                     CODE_SIGN_STYLE="Manual" \
+                     DEVELOPMENT_TEAM="RSZW7A8BKJ" \
+                     PROVISIONING_PROFILE_SPECIFIER="Boomii Lojista AppStore" \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain" \
+                     archive
 
       - name: Exportar Pacote .ipa
         run: |
