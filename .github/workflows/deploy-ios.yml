@@ -77,6 +77,13 @@ jobs:
         run: |
           npx cap sync ios
 
+          # Validação: Garante que o projeto nativo (SPM xcodeproj ou xcworkspace) está pronto
+          if [ ! -d "ios/App/App.xcodeproj" ] && [ ! -d "ios/App/App.xcworkspace" ]; then
+            echo "::error::Projeto nativo iOS não encontrado em ios/App após 'cap sync ios'"
+            exit 1
+          fi
+          echo "Estrutura nativa do iOS verificada com sucesso."
+
       - name: Configurar Número da Build
         if: "${{ inputs.build_number != '' }}"
         run: |
