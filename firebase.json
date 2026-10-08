@@ -18,8 +18,20 @@
           ]
         }
       ],
-      "rewrites": [
+      "headers": [
         {
+          "//": "Seguranca: o painel nao pode ser embutido em outro site (clickjacking), o navegador nao adivinha tipos de arquivo e a camera so vale para o proprio site.",
+          "source": "**",
+          "headers": [
+            { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=(), payment=()" }
+          ]
+        }
+      ],
+      "rewrites": [        {
           "source": "**",
           "destination": "/index.html"
         }
@@ -47,8 +59,20 @@
         { "source": "/painel", "destination": "https://www.boomii.com.br/painel", "type": 301 },
         { "source": "/admin", "destination": "https://www.boomii.com.br/admin", "type": 301 }
       ],
-      "rewrites": [
+      "headers": [
         {
+          "//": "Seguranca: o painel nao pode ser embutido em outro site (clickjacking), o navegador nao adivinha tipos de arquivo e a camera so vale para o proprio site.",
+          "source": "**",
+          "headers": [
+            { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=(), payment=()" }
+          ]
+        }
+      ],
+      "rewrites": [        {
           "source": "**",
           "destination": "/index.html"
         }

@@ -26,9 +26,19 @@ service cloud.firestore {
     // Configuração pública da loja (nome, cores, logo, textos do cartão): a
     // página de cadastro do cliente (/c/{slug}) precisa ler isso sem login,
     // então o read continua público. Escrita só pelo dono ou pelo admin.
+    // Campos que só o admin altera. Antes o lojista podia escrever QUALQUER
+    // campo da própria loja: pelo console do navegador ele se marcava como
+    // adimplente, reativava a loja bloqueada ou até a apagava. `operadores`
+    // é legado — os PINs agora vivem em /privado, gravados pelo servidor.
+    function alteraCampoDoAdmin() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['financeiro', 'statusFinanceiro', 'ativo', 'email', 'operadores', 'criadoEm']);
+    }
+
     match /lojistas/{lojaId} {
       allow read: if true;
-      allow write: if isAdmin() || isLojista(lojaId);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isLojista(lojaId) && !alteraCampoDoAdmin());
 
       // Clientes cadastrados (nome, celular, e-mail, aniversário — dado
       // pessoal sob LGPD): só o lojista dono ou o admin podem ler. Escrita

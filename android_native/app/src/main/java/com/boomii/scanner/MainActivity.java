@@ -72,8 +72,10 @@ public class MainActivity extends AppCompatActivity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
+        // O painel é remoto (https): não precisa ler arquivos do aparelho, e
+        // deixar isso ligado abriria file:// para qualquer página carregada.
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
@@ -90,21 +92,27 @@ public class MainActivity extends AppCompatActivity {
                 MainActivity.this.runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        currentPermissionRequest = request;
+                        // Só a câmera, e só para o próprio painel. Antes o app
+                        // concedia QUALQUER recurso (microfone incluso) a
+                        // qualquer página que pedisse.
+                        boolean pediuCamera = false;
                         for (String res : request.getResources()) {
-                            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) {
-                                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA)
-                                        == PackageManager.PERMISSION_GRANTED) {
-                                    request.grant(request.getResources());
-                                } else {
-                                    ActivityCompat.requestPermissions(MainActivity.this,
-                                            new String[]{Manifest.permission.CAMERA},
-                                            CAMERA_PERMISSION_CODE);
-                                }
-                                return;
-                            }
+                            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) pediuCamera = true;
                         }
-                        request.grant(request.getResources());
+                        if (!pediuCamera || !hostConfiavel(request.getOrigin())) {
+                            request.deny();
+                            return;
+                        }
+                        String[] somenteCamera = new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE};
+                        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA)
+                                == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(somenteCamera);
+                        } else {
+                            currentPermissionRequest = request;
+                            ActivityCompat.requestPermissions(MainActivity.this,
+                                    new String[]{Manifest.permission.CAMERA},
+                                    CAMERA_PERMISSION_CODE);
+                        }
                     }
                 });
             }
@@ -137,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (url.contains("boomii-fidelidade.web.app") || url.contains("boomii-fidelidade.firebaseapp.com")) {
+                if (hostConfiavel(request.getUrl())) {
                     return false; // let webview handle it
                 }
                 // External links (e.g. WhatsApp, Google Wallet pass addition, help links)
@@ -150,6 +158,20 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    /**
+     * O painel e nada mais. Compara o host exato via HTTPS — antes bastava a
+     * URL CONTER o domínio, e "https://golpe.com/?boomii-fidelidade.web.app"
+     * abria dentro do app com acesso à câmera.
+     */
+    private static boolean hostConfiavel(Uri uri) {
+        if (uri == null || !"https".equals(uri.getScheme())) return false;
+        String host = uri.getHost();
+        return "boomii-fidelidade.web.app".equals(host)
+                || "boomii-fidelidade.firebaseapp.com".equals(host)
+                || "www.boomii.com.br".equals(host)
+                || "boomii.com.br".equals(host);
     }
 
     private void setupSwipeRefresh() {
@@ -177,7 +199,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == CAMERA_PERMISSION_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 if (currentPermissionRequest != null) {
-                    currentPermissionRequest.grant(currentPermissionRequest.getResources());
+                    currentPermissionRequest.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
                     currentPermissionRequest = null;
                 }
             } else {

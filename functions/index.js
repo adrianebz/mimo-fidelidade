@@ -9,19 +9,30 @@ const apple = require('./apple-wallet');
 const { renderStampBanner } = require('./banner');
 const { montarCamposDoPasse, paraTextModules, paraLabelValueRows, resolverCampos } = require('./pass-fields');
 const notificacoes = require('./notificacoes');
+const operadores = require('./operadores');
 
 if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
 }
 
 /**
- * Validação de PIN de operador (suporta hash SHA-256 ou PIN direto para ambiente de testes)
+ * Quem está operando o balcão: o dono logado (sessão basta) ou um operador
+ * pelo PIN, validado com limite de tentativas (ver operadores.js).
+ *
+ * Roda FORA da transação de propósito: um HttpsError lançado lá dentro
+ * desfaria também o registro da tentativa errada, e o limite não valeria.
  */
-function verificaPin(pinInformado, pinGravado) {
-  if (!pinInformado || !pinGravado) return false;
-  if (pinInformado === pinGravado) return true;
-  const hash = crypto.createHash('sha256').update(String(pinInformado)).digest('hex');
-  return hash === pinGravado;
+async function autorizarBalcao(req, db, lojaId, pin, acao) {
+  const claims = req.auth?.token || {};
+  const dono = claims.role === 'admin' || (claims.role === 'lojista' && claims.lojaId === lojaId);
+  if (dono) {
+    const ident = await operadores.identificarOperador(db, lojaId, pin);
+    return ident || { uid: req.auth.uid, operador: { nome: 'Lojista' } };
+  }
+  if (!pin) {
+    throw new HttpsError('permission-denied', `Entre como lojista ou informe o PIN do operador para ${acao}.`);
+  }
+  return operadores.verificarPin(db, lojaId, String(pin));
 }
 
 const FN_BASE = () =>
@@ -476,7 +487,29 @@ exports.criarCartao = onCall(
       atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await lojaRef.collection('clientes').doc(clienteId).set(clientePayload, { merge: true });
+    // Celular já cadastrado nesta loja: quem pede precisa provar que é o dono.
+    //
+    // Antes, qualquer pessoa que soubesse o celular de um cliente sobrescrevia
+    // nome e e-mail dele e recebia de volta o link do cartão já existente —
+    // com os selos e o prêmio daquele cliente, prontos para retirar no balcão.
+    // Agora vale o SMS verificado (quando a loja exige) ou o e-mail do
+    // primeiro cadastro, e os dados gravados não são mais sobrescritos por
+    // aqui: correção de cadastro é com o lojista, pelo painel.
+    const clienteRef = lojaRef.collection('clientes').doc(clienteId);
+    const clienteSnap = await clienteRef.get();
+    if (clienteSnap.exists) {
+      const smsConfere = req.auth?.token?.phone_number === tel.number;
+      const emailConfere = String(clienteSnap.get('email') || '').toLowerCase() === clientePayload.email;
+      if (!smsConfere && !emailConfere) {
+        throw new HttpsError(
+          'already-exists',
+          'Este celular já tem um cartão nesta loja. Para recuperá-lo, use o mesmo e-mail do primeiro cadastro ou peça ajuda no balcão.'
+        );
+      }
+    } else {
+      await clienteRef.set(clientePayload);
+    }
+    const dadosCliente = clienteSnap.exists ? clienteSnap.data() : clientePayload;
 
     // 2. Verifica se já existe cartão ativo para este cliente nesta loja
     const existente = await db.collection('cartoes')
@@ -488,7 +521,7 @@ exports.criarCartao = onCall(
 
     if (!existente.empty) {
       const cartaoSnap = existente.docs[0];
-      const saveUrl = await gerarSaveUrl(cartaoSnap, loja, clientePayload);
+      const saveUrl = await gerarSaveUrl(cartaoSnap, loja, dadosCliente);
       // Cartões emitidos antes da Apple Wallet ganham o token na primeira consulta.
       const appleToken = await apple.garantirAuthToken(cartaoSnap.ref, cartaoSnap.data());
       return {
@@ -517,9 +550,10 @@ exports.criarCartao = onCall(
     const cartaoData = {
       lojaId,
       clienteId,
-      clienteNome: nome.trim(),
-      clienteEmail: email.trim().toLowerCase(),
-      clienteAniversario: aniversario || null,
+      // Do cadastro gravado: num cliente já existente, o pedido não sobrescreve.
+      clienteNome: dadosCliente.nome,
+      clienteEmail: dadosCliente.email,
+      clienteAniversario: dadosCliente.aniversario || null,
       clienteCelular: tel.number,
       ciclo,
       selos: 0,
@@ -541,7 +575,7 @@ exports.criarCartao = onCall(
     await db.doc(`cartoes/${cartaoId}`).set(cartaoData);
 
     const novoSnap = await db.doc(`cartoes/${cartaoId}`).get();
-    const saveUrl = await gerarSaveUrl(novoSnap, loja, clientePayload);
+    const saveUrl = await gerarSaveUrl(novoSnap, loja, dadosCliente);
 
     return {
       cartaoId,
@@ -590,6 +624,15 @@ exports.carimbar = onCall(
     const db = admin.firestore();
     const cartaoRef = db.doc(`cartoes/${cartaoId}`);
 
+    // A loja do cartão não muda; lida antes para autorizar fora da transação.
+    const previa = await cartaoRef.get();
+    if (!previa.exists) {
+      throw new HttpsError('not-found', 'Cartão não encontrado.');
+    }
+    const { uid, operador } = await autorizarBalcao(
+      req, db, previa.get('lojaId') || lojaIdParam, pin, 'registrar o selo'
+    );
+
     return db.runTransaction(async (tx) => {
       const cartaoSnap = await tx.get(cartaoRef);
       if (!cartaoSnap.exists) {
@@ -609,40 +652,8 @@ exports.carimbar = onCall(
         throw new HttpsError('failed-precondition', 'Operação bloqueada: o lojista possui pendência financeira. Regularize a assinatura para registrar selos.');
       }
 
-      // Autorização: sessão autenticada do dono da loja OU PIN de operador.
-      //
-      // O PIN existia porque não havia login de verdade. Agora que o lojista
-      // entra com Firebase Auth, a própria sessão (claims role/lojaId) já prova
-      // quem é — exigir PIN além disso seria atrito sem ganho. O PIN continua
-      // valendo para dispositivos de balcão que operam sem login.
-      const claims = req.auth?.token || {};
-      const donoAutenticado =
-        claims.role === 'admin' || (claims.role === 'lojista' && claims.lojaId === lojaId);
-
-      let uid = req.auth?.uid || 'balcao';
-      let operador = { nome: donoAutenticado ? 'Lojista' : 'Balcão' };
-
-      if (!donoAutenticado) {
-        if (!pin) {
-          throw new HttpsError(
-            'permission-denied',
-            'Entre como lojista ou informe o PIN do operador para registrar o selo.'
-          );
-        }
-        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
-        if (!entry) {
-          throw new HttpsError('permission-denied', 'PIN do operador incorreto.');
-        }
-        uid = entry[0];
-        operador = entry[1];
-      } else if (pin) {
-        // Sessão do lojista + PIN: usa o PIN só para saber qual operador atendeu
-        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
-        if (entry) {
-          uid = entry[0];
-          operador = entry[1];
-        }
-      }
+      // Autorização (sessão do dono OU PIN de operador) já feita antes da
+      // transação, em autorizarBalcao.
 
       // Validação do TOTP rotativo, quando o código vem da leitura do QR da Wallet.
       // NÃO bloqueia o carimbo: a Google Wallet não suporta atualizar a imagem do
@@ -888,6 +899,12 @@ exports.resgatar = onCall(
     const db = admin.firestore();
     const cartaoRef = db.doc(`cartoes/${cartaoId}`);
 
+    const previa = await cartaoRef.get();
+    if (!previa.exists) throw new HttpsError('not-found', 'Cartão não encontrado.');
+    const { uid, operador } = await autorizarBalcao(
+      req, db, previa.get('lojaId') || lojaIdParam, pin, 'resgatar o prêmio'
+    );
+
     return db.runTransaction(async (tx) => {
       const cartaoSnap = await tx.get(cartaoRef);
       if (!cartaoSnap.exists) throw new HttpsError('not-found', 'Cartão não encontrado.');
@@ -901,34 +918,7 @@ exports.resgatar = onCall(
       const lojaDoc = await tx.get(db.doc(`lojistas/${lojaId}`));
       const loja = lojaDoc.data() || {};
 
-      // Mesma autorização do carimbo: sessão do dono da loja OU PIN de operador.
-      const claims = req.auth?.token || {};
-      const donoAutenticado =
-        claims.role === 'admin' || (claims.role === 'lojista' && claims.lojaId === lojaId);
-
-      let uid = req.auth?.uid || 'balcao';
-      let operador = { nome: donoAutenticado ? 'Lojista' : 'Balcão' };
-
-      if (!donoAutenticado) {
-        if (!pin) {
-          throw new HttpsError(
-            'permission-denied',
-            'Entre como lojista ou informe o PIN do operador para resgatar o prêmio.'
-          );
-        }
-        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
-        if (!entry) {
-          throw new HttpsError('permission-denied', 'PIN incorreto.');
-        }
-        uid = entry[0];
-        operador = entry[1];
-      } else if (pin) {
-        const entry = Object.entries(loja.operadores || {}).find(([, op]) => verificaPin(pin, op?.pin));
-        if (entry) {
-          uid = entry[0];
-          operador = entry[1];
-        }
-      }
+      // Autorização (sessão do dono OU PIN) já feita antes da transação.
 
       const premio = loja.layout?.premio || '1 Recompensa Especial';
 
@@ -1388,6 +1378,18 @@ exports.excluirCliente = onCall(
 );
 
 /**
+ * Tira de uma vez os PINs de operador que ainda estão no documento público
+ * das lojas (só admin). Sem isso eles saem loja a loja, no primeiro uso.
+ */
+exports.migrarPinsOperadores = onCall({ region: 'southamerica-east1' }, async (req) => {
+  if (req.auth?.token?.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas o administrador pode migrar os PINs.');
+  }
+  const migradas = await operadores.migrarTodas(admin.firestore());
+  return { sucesso: true, migradas };
+});
+
+/**
  * 10. Disparo manual de notificação para a carteira de um cliente (botões do painel).
  */
 exports.dispararNotificacaoManual = onCall(
@@ -1397,10 +1399,12 @@ exports.dispararNotificacaoManual = onCall(
     if (!clienteId || !tipo) {
       throw new HttpsError('invalid-argument', 'clienteId e tipo obrigatórios.');
     }
+    // Antes aceitava o lojaId do pedido sem exigir login: qualquer pessoa
+    // disparava avisos para clientes de qualquer loja.
     const claims = req.auth?.token || {};
     const db = admin.firestore();
-    const lojaId = claims.lojaId || lojaIdParam;
-    if (!lojaId) throw new HttpsError('permission-denied', 'lojaId não identificado.');
+    const lojaId = lojaDoPedido(claims, lojaIdParam, 'notificar');
+    if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
 
     const lojaSnap = await db.doc(`lojistas/${lojaId}`).get();
     if (!lojaSnap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
@@ -1475,6 +1479,10 @@ exports.getLogo = onRequest({ cors: true, memory: '512MiB' }, async (req, res) =
       const isJpeg = String(base64).includes('jpeg') || String(base64).includes('jpg');
       res.setHeader('Content-Type', isSvg ? 'image/svg+xml' : isJpeg ? 'image/jpeg' : 'image/png');
       res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache no Wallet
+      // O arquivo vem do lojista: SVG pode carregar <script>. Aberto direto no
+      // navegador, a CSP em sandbox impede que ele execute; como <img> nada muda.
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
       return res.send(buffer);
     }
 
@@ -1530,6 +1538,11 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
 exports.previaPasseApple = onCall(
   { region: 'southamerica-east1', memory: '512MiB' },
   async (req) => {
+    // Renderização pesada: só para quem edita um cartão, não para a internet.
+    const papel = req.auth?.token?.role;
+    if (papel !== 'admin' && papel !== 'lojista') {
+      throw new HttpsError('unauthenticated', 'Entre como lojista para ver a prévia.');
+    }
     const design = req.data?.design;
     if (!design || typeof design !== 'object') {
       throw new HttpsError('invalid-argument', 'Design ausente.');
