@@ -51,9 +51,17 @@ function TelaCarregando() {
 export const App: React.FC = () => {
   const [sessao, setSessao] = useState<Sessao>({ carregando: true });
 
-  useEffect(
-    () =>
-      onAuthStateChanged(auth, async (user) => {
+  useEffect(() => {
+    // Rede de segurança: se o Auth não responder (rede ruim, WebView
+    // restrito), o login aparece em vez de uma tela de carregamento eterna.
+    let respondeu = false;
+    const limite = window.setTimeout(() => {
+      if (!respondeu) setSessao({ carregando: false, papel: null });
+    }, 8000);
+
+    const parar = onAuthStateChanged(auth, async (user) => {
+        respondeu = true;
+        window.clearTimeout(limite);
         if (!user) {
           setSessao({ carregando: false, papel: null });
           return;
@@ -73,9 +81,13 @@ export const App: React.FC = () => {
         } catch {
           setSessao({ carregando: false, papel: null });
         }
-      }),
-    []
-  );
+      });
+
+    return () => {
+      window.clearTimeout(limite);
+      parar();
+    };
+  }, []);
 
   // Modo aplicativo nativo (APK / iOS): abre direto no Painel do Lojista e desativa páginas de marketing
   const isAppMode = typeof window !== 'undefined' && (

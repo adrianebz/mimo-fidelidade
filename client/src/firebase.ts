@@ -1,7 +1,13 @@
 // Firebase Client SDK — Boomii
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import {
+  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 
@@ -53,7 +59,33 @@ export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 // Inicializa ou reaproveita a app Firebase
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+/*
+ * No app nativo (Capacitor, iOS e Android) o Auth NÃO pode nascer de
+ * getAuth(): ele carrega o "popupRedirectResolver", que injeta um iframe do
+ * authDomain. O WKWebView do iPhone bloqueia esse iframe e o Auth nunca termina
+ * de inicializar — onAuthStateChanged não dispara e o app fica eternamente na
+ * tela de carregamento. Como o login aqui é só e-mail/senha, o resolver não
+ * faz falta: initializeAuth com persistência explícita resolve.
+ */
+function ehAppNativo(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    Boolean((window as any).Capacitor?.isNativePlatform?.()) ||
+    navigator.userAgent.includes('BoomiiScannerApp')
+  );
+}
+
+function criarAuth(): Auth {
+  if (!ehAppNativo()) return getAuth(app);
+  try {
+    return initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+  } catch {
+    // Já inicializado (recarga a quente em desenvolvimento).
+    return getAuth(app);
+  }
+}
+
+export const auth = criarAuth();
 export const storage = getStorage(app);
 // Mesma região das Cloud Functions (criarCartao/carimbar/resgatar/autenticarAdmin/autenticarLojista)
 export const functions = getFunctions(app, 'southamerica-east1');
