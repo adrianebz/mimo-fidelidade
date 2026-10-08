@@ -179,11 +179,17 @@ jobs:
           KEY_ID=$(echo "$KEY_ID_RAW" | tr -d '[:space:]"')
           ISSUER_ID=$(echo "$ISSUER_ID_RAW" | tr -d '[:space:]"')
 
-          # 2. Configura a chave privada .p8 normalizando quebras de linha (evita problemas com CRLF do Windows)
+          # 2. Configura a chave privada .p8 (suporta texto puro ou Base64, e normaliza quebras de linha)
           mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys
           node -e "
             const fs = require('fs');
-            const key = process.env.PRIVATE_KEY_CONTENT.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim() + '\n';
+            let key = (process.env.PRIVATE_KEY_CONTENT || '').trim();
+            if (!key.includes('-----BEGIN')) {
+              try {
+                key = Buffer.from(key, 'base64').toString('utf8');
+              } catch (e) {}
+            }
+            key = key.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim() + '\n';
             fs.writeFileSync(process.env.HOME + '/.appstoreconnect/private_keys/AuthKey_' + '$KEY_ID' + '.p8', key);
             fs.writeFileSync(process.env.HOME + '/.private_keys/AuthKey_' + '$KEY_ID' + '.p8', key);
           "
@@ -202,7 +208,8 @@ jobs:
                        -t ios \
                        --apiKey "$KEY_ID" \
                        --apiIssuer "$ISSUER_ID" \
-                       --show-progress
+                       --show-progress \
+                       --verbose
 
           echo "Upload concluído com sucesso!"
 
@@ -212,7 +219,7 @@ jobs:
         run: |
           echo "Limpando chaveiro e credenciais temporárias do runner..."
           security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
-          rm -rf ~/.appstoreconnect/private_keys
+          rm -rf ~/.appstoreconnect/private_keys ~/.private_keys
           rm -rf "$RUNNER_TEMP/output"
           rm -rf "$RUNNER_TEMP/App.xcarchive"
           echo "Chaves destruídas com sucesso."
