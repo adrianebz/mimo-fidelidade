@@ -1333,7 +1333,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                                   </span>
                                   {isReady && (
                                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground animate-pulse">
-                                      Boomii Pronto!
+                                      Recompensa pronta!
                                     </span>
                                   )}
                                 </div>
