@@ -96,9 +96,16 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
 
-          # 2. Decodifica e importa certificado p12 de forma robusta via Node.js
-          node -e "fs.writeFileSync(process.env.RUNNER_TEMP + '/cert.p12', Buffer.from(process.env.CERT_P12_BASE64, 'base64'))"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
+          # 2. Decodifica e normaliza certificado p12 para o formato estrito do macOS Keychain
+          node -e "fs.writeFileSync(process.env.RUNNER_TEMP + '/cert_raw.p12', Buffer.from(process.env.CERT_P12_BASE64, 'base64'))"
+          
+          # Extrai e reempacota com OpenSSL nativo do macOS para garantir 100% de compatibilidade DER/PKCS12
+          openssl pkcs12 -in "$RUNNER_TEMP/cert_raw.p12" -passin "pass:$CERT_PASSWORD" -nodes -out "$RUNNER_TEMP/cert_key.pem"
+          openssl pkcs12 -export -in "$RUNNER_TEMP/cert_key.pem" -passout "pass:$CERT_PASSWORD" -out "$RUNNER_TEMP/cert_clean.p12" -legacy 2>/dev/null || \
+          openssl pkcs12 -export -in "$RUNNER_TEMP/cert_key.pem" -passout "pass:$CERT_PASSWORD" -out "$RUNNER_TEMP/cert_clean.p12"
+
+          # Importa para o chaveiro
+          security import "$RUNNER_TEMP/cert_clean.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
@@ -117,8 +124,8 @@ jobs:
             }
           "
 
-          # Remove o p12 temporário do disco
-          rm -f "$RUNNER_TEMP/cert.p12"
+          # Remove os arquivos temporários de chave do disco
+          rm -f "$RUNNER_TEMP/cert_raw.p12" "$RUNNER_TEMP/cert_key.pem" "$RUNNER_TEMP/cert_clean.p12"
 
       - name: Compilar Arquivo .xcarchive (Xcode Release)
         run: |
