@@ -14,6 +14,7 @@ import {
   MASTER_ADMIN_EMAIL
 } from '../../services/boomiiWalletService.js';
 import { SiteNavTab } from '../../components/SiteHeader.js';
+import { urlCadastroCliente } from '../../siteConfig.js';
 
 interface AdminContasProps {
   onNavigate: (tab: SiteNavTab) => void;
@@ -226,7 +227,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
   };
 
   const handleCopyLink = (slug: string) => {
-    const url = `${window.location.origin}/c/${slug}`;
+    const url = urlCadastroCliente(slug);
     navigator.clipboard.writeText(url);
     showToast(`Link copiado: ${url}`);
   };

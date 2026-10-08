@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebase.js';
+import { encerrarSessao } from './services/boomiiWalletService.js';
 import { SiteHeader, SiteNavTab } from './components/SiteHeader.js';
 import { SiteFooter } from './components/SiteFooter.js';
 import { SiteHome } from './pages/site/SiteHome.js';
@@ -28,7 +31,52 @@ function ehRotaDoLojista(path: string): boolean {
   );
 }
 
+/**
+ * Sessão do Firebase Auth. O papel vem das custom claims do token — a mesma
+ * informação que o firestore.rules usa —, e não de flags no localStorage, que
+ * qualquer pessoa edita no navegador.
+ */
+type Sessao =
+  | { carregando: true }
+  | { carregando: false; papel: 'admin' | 'lojista' | null };
+
+function TelaCarregando() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="h-9 w-9 rounded-full border-4 border-primary border-t-transparent animate-spin" aria-label="Carregando" />
+    </div>
+  );
+}
+
 export const App: React.FC = () => {
+  const [sessao, setSessao] = useState<Sessao>({ carregando: true });
+
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+          setSessao({ carregando: false, papel: null });
+          return;
+        }
+        // Volta a "carregando" enquanto lê as claims: logo após o login, o
+        // papel ainda não é conhecido e a guarda abaixo não pode expulsar o
+        // usuário de volta para o login nesse intervalo.
+        setSessao({ carregando: true });
+        try {
+          const { claims } = await user.getIdTokenResult();
+          const papel = claims.role === 'admin' || claims.role === 'lojista' ? claims.role : null;
+          // Lojista vê sempre a própria loja, a que está no token.
+          if (papel === 'lojista' && claims.lojaId) {
+            localStorage.setItem('boomii_active_lojista', String(claims.lojaId));
+          }
+          setSessao({ carregando: false, papel });
+        } catch {
+          setSessao({ carregando: false, papel: null });
+        }
+      }),
+    []
+  );
+
   // Modo aplicativo nativo (APK / iOS): abre direto no Painel do Lojista e desativa páginas de marketing
   const isAppMode = typeof window !== 'undefined' && (
     new URLSearchParams(window.location.search).get('mode') === 'app' ||
@@ -104,6 +152,26 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isAppMode]);
 
+  // Guarda das áreas restritas: painel exige lojista ou admin; contas, só admin.
+  // Antes o painel abria para qualquer visitante — vazio, porque o Firestore
+  // negava os dados, mas como se a loja não tivesse clientes.
+  const acessoNegado =
+    !sessao.carregando &&
+    ((siteTab === 'painel' && !sessao.papel) || (siteTab === 'admin' && sessao.papel !== 'admin'));
+
+  useEffect(() => {
+    if (!acessoNegado || sessao.carregando) return;
+    setSiteTab(siteTab === 'admin' && sessao.papel === 'lojista' ? 'painel' : 'login');
+  }, [acessoNegado, sessao, siteTab]);
+
+  /** Encerra a sessão de verdade: sem isso, "Sair" só trocava de tela. */
+  const sair = async () => {
+    await encerrarSessao();
+    localStorage.removeItem('boomii_admin_session');
+    localStorage.removeItem('boomii_active_lojista');
+    setSiteTab('login');
+  };
+
   // Se a rota atual for o cadastro público do cliente (/c/{slug})
   if (currentPath.startsWith('/c/')) {
     return (
@@ -117,6 +185,10 @@ export const App: React.FC = () => {
     );
   }
 
+  if ((siteTab === 'painel' || siteTab === 'admin') && (sessao.carregando || acessoNegado)) {
+    return <TelaCarregando />;
+  }
+
   // Se for o painel master de administração de contas
   if (siteTab === 'admin') {
     return (
@@ -126,41 +198,25 @@ export const App: React.FC = () => {
           setSelectedStoreSlug(slug);
           localStorage.setItem('boomii_active_lojista', slug);
         }}
-        onLogout={() => {
-          localStorage.removeItem('boomii_admin_session');
-          setSiteTab('login');
-        }}
+        onLogout={sair}
       />
     );
   }
 
-  // Se estiver em modo app (APK), garante que NUNCA renderiza a página institucional
-  if (isAppMode) {
-    if (siteTab === 'login') {
-      return (
-        <SiteLogin
-          onNavigate={(tab) => setSiteTab(tab)}
-          onSelectStore={(slug) => {
-            setSelectedStoreSlug(slug);
-            localStorage.setItem('boomii_active_lojista', slug);
-          }}
-        />
-      );
-    }
-    return <SitePainel onNavigate={(tab) => setSiteTab(tab)} />;
-  }
-
-  // Se estiver no painel do lojista, renderiza o layout específico do painel sem o cabeçalho público
-  if (siteTab === 'painel') {
-    return <SitePainel onNavigate={(tab) => setSiteTab(tab)} />;
+  // Se estiver no painel do lojista, renderiza o layout específico do painel sem o cabeçalho público.
+  // No app, qualquer aba que não seja login cai aqui: ele NUNCA renderiza o site institucional.
+  if (siteTab === 'painel' || (isAppMode && siteTab !== 'login')) {
+    return <SitePainel onNavigate={(tab) => setSiteTab(tab)} onSair={sair} />;
   }
 
   // A área do lojista é uma tela isolada: sem cabeçalho nem rodapé do site.
   // Quem chega aqui veio para entrar no sistema, não para navegar pelo site —
   // e a navegação institucional só daria saída acidental no meio do login.
+  // É a mesma tela no navegador e no app; antes o app a mostrava sem este
+  // contêiner (sem fundo nem fonte do tema).
   if (siteTab === 'login') {
     return (
-      <div className="flex min-h-screen flex-col bg-background text-foreground font-sans antialiased selection:bg-primary selection:text-primary-foreground">
+      <div className="flex min-h-screen flex-col bg-background text-foreground font-sans antialiased selection:bg-primary selection:text-primary-foreground pt-[env(safe-area-inset-top)]">
         <SiteLogin
           onNavigate={(tab) => setSiteTab(tab)}
           onSelectStore={(slug) => {

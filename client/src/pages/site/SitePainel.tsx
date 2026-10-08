@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
+import { urlCadastroCliente } from "../../siteConfig.js";
 
 type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos";
 
@@ -168,7 +169,7 @@ interface ProgramItem {
   revenue: number;
 }
 
-export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = ({ onNavigate }) => {
+export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSair: () => void }> = ({ onNavigate, onSair }) => {
   const [currentTab, setCurrentTab] = useState<DashboardTab>("visao-geral");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedUnit, setSelectedUnit] = useState("Loja Principal");
@@ -180,8 +181,27 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
     return new URLSearchParams(window.location.search).get("loja") || "nox-dessert-club";
   });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  /** Folha com as abas que não cabem na barra inferior do celular. */
-  const [menuMaisAberto, setMenuMaisAberto] = useState(false);
+  /**
+   * Barra lateral no celular: a MESMA do desktop, deslizando da esquerda por
+   * cima do conteúdo. Antes o celular tinha uma folha "Mais" própria, com
+   * outros itens e outro visual — o app e o painel na web pareciam produtos
+   * diferentes.
+   */
+  const [gavetaAberta, setGavetaAberta] = useState(false);
+
+  useEffect(() => {
+    if (!gavetaAberta) return;
+    const aoTeclar = (e: KeyboardEvent) => e.key === "Escape" && setGavetaAberta(false);
+    // Virou desktop (girou o tablet, alargou a janela): a barra fixa assume.
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const aoMudar = () => desktop.matches && setGavetaAberta(false);
+    window.addEventListener("keydown", aoTeclar);
+    desktop.addEventListener("change", aoMudar);
+    return () => {
+      window.removeEventListener("keydown", aoTeclar);
+      desktop.removeEventListener("change", aoMudar);
+    };
+  }, [gavetaAberta]);
   /** Cliente aberto no pop-up de edição. */
   const [clienteEmEdicao, setClienteEmEdicao] = useState<Customer | null>(null);
   const [buscaClientes, setBuscaClientes] = useState("");
@@ -779,6 +799,10 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
     showToast("Item removido dos itens participantes.");
   };
 
+  // Rótulos da barra lateral: no desktop seguem o hambúrguer; na gaveta do
+  // celular aparecem sempre.
+  const rotulos = menuLateralAberto || gavetaAberta;
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans antialiased">
       {/* Toast alert */}
@@ -792,32 +816,45 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
         </div>
       )}
 
-      {/* ── BARRA LATERAL (DESKTOP) ── */}
+      {/* Fundo escurecido da gaveta no celular; tocar fora fecha. */}
+      {gavetaAberta && (
+        <div
+          className="lg:hidden fixed inset-0 z-[94] bg-background/70 backdrop-blur-sm animate-fade-in"
+          onClick={() => setGavetaAberta(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── BARRA LATERAL ──
+          Desktop: fixa, recolhível pelo hambúrguer. Celular: a mesma barra,
+          sempre expandida, deslizando da esquerda como gaveta. */}
       <aside
-        className={`hidden lg:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-border/40 bg-card transition-[width] duration-200 ${
-          menuLateralAberto ? "w-64" : "w-[72px]"
-        }`}
+        className={`flex fixed inset-y-0 left-0 z-[95] lg:z-40 flex-col border-r border-border/40 bg-card w-72 max-w-[85vw] pt-[env(safe-area-inset-top)] lg:pt-0 lg:max-w-none transition-[transform,width] duration-200 ${
+          gavetaAberta ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+        } lg:translate-x-0 lg:shadow-none ${menuLateralAberto ? "lg:w-64" : "lg:w-[72px]"}`}
+        aria-label="Menu do painel"
       >
         {/* O hambúrguer fica dentro da própria barra: recolhida, ela vira uma
             faixa estreita de ícones em vez de sumir, então o controle de
-            expandir continua sempre visível e no mesmo lugar. */}
+            expandir continua sempre visível e no mesmo lugar. Na gaveta do
+            celular, o mesmo botão fecha. */}
         <div
           className={`flex items-center gap-2.5 border-b border-border/40 py-4 ${
-            menuLateralAberto ? "px-4" : "px-0 justify-center"
+            rotulos ? "px-4" : "px-0 justify-center"
           }`}
         >
           <button
             type="button"
-            onClick={() => setMenuLateralAberto((v) => !v)}
-            aria-expanded={menuLateralAberto}
-            aria-label={menuLateralAberto ? "Recolher menu" : "Expandir menu"}
-            title={menuLateralAberto ? "Recolher menu" : "Expandir menu"}
+            onClick={() => (gavetaAberta ? setGavetaAberta(false) : setMenuLateralAberto((v) => !v))}
+            aria-expanded={gavetaAberta || menuLateralAberto}
+            aria-label={gavetaAberta ? "Fechar menu" : rotulos ? "Recolher menu" : "Expandir menu"}
+            title={gavetaAberta ? "Fechar menu" : rotulos ? "Recolher menu" : "Expandir menu"}
             className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-xl border border-border/60 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
           >
             <Menu className="w-4 h-4" />
           </button>
 
-          {menuLateralAberto && (
+          {rotulos && (
             <div className="min-w-0">
               <div className="font-bold text-foreground text-sm truncate">
                 {cardConfig.storeName}
@@ -829,10 +866,11 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
         {/* Ação principal do balcão, acima da navegação de propósito:
             é o que o operador mais usa no dia a dia. */}
-        <div className={`pt-4 ${menuLateralAberto ? "px-4" : "px-3"}`}>
+        <div className={`pt-4 ${rotulos ? "px-4" : "px-3"}`}>
           <button
             type="button"
             onClick={() => {
+              setGavetaAberta(false);
               setScannedCustomer(customers[0] || null);
               setScannerOpen(true);
             }}
@@ -840,7 +878,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
             title="Ler QR Code do cartão do cliente para pontuar"
           >
             <Scan className="w-4 h-4 shrink-0" />
-            {menuLateralAberto && <span>Ler QR do Cliente</span>}
+            {rotulos && <span>Ler QR do Cliente</span>}
           </button>
         </div>
 
@@ -851,11 +889,14 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
               <button
                 key={id}
                 type="button"
-                onClick={() => setCurrentTab(id)}
+                onClick={() => {
+                  setCurrentTab(id);
+                  setGavetaAberta(false);
+                }}
                 aria-current={ativo ? "page" : undefined}
                 title={rotulo}
                 className={`w-full flex items-center py-2.5 rounded-xl text-sm font-semibold transition-colors cursor-pointer border ${
-                  menuLateralAberto ? "gap-3 px-3" : "justify-center px-0"
+                  rotulos ? "gap-3 px-3" : "justify-center px-0"
                 } ${
                   ativo
                     ? "bg-primary/10 text-primary border-primary/30"
@@ -863,7 +904,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 }`}
               >
                 <Icone className="w-4 h-4 shrink-0" />
-                {menuLateralAberto && (
+                {rotulos && (
                   <>
                     <span className="truncate">{rotulo}</span>
                     {id === "clientes" && customers.length > 0 && (
@@ -878,39 +919,39 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
           })}
         </nav>
 
-        <div className={`py-4 border-t border-border/40 space-y-2 ${menuLateralAberto ? "px-4" : "px-3"}`}>
+        <div className={`py-4 border-t border-border/40 space-y-2 ${rotulos ? "px-4" : "px-3"}`}>
           {financialStatus === "adimplente" ? (
             <div
               className={`flex items-center py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-semibold text-emerald-400 ${
-                menuLateralAberto ? "gap-1.5 px-3" : "justify-center px-0"
+                rotulos ? "gap-1.5 px-3" : "justify-center px-0"
               }`}
               title="Conta verificada e homologada pelo Administrador BOOMII"
             >
               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-              {menuLateralAberto && <span className="truncate">Plano Pro • Validado</span>}
+              {rotulos && <span className="truncate">Plano Pro • Validado</span>}
             </div>
           ) : (
             <div
               className={`flex items-center py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-[11px] font-semibold text-rose-400 ${
-                menuLateralAberto ? "gap-1.5 px-3" : "justify-center px-0"
+                rotulos ? "gap-1.5 px-3" : "justify-center px-0"
               }`}
               title="Conta suspensa pelo Administrador BOOMII por pendência financeira"
             >
               <Lock className="h-3.5 w-3.5 shrink-0" />
-              {menuLateralAberto && <span className="truncate">Plano Pro • Bloqueado</span>}
+              {rotulos && <span className="truncate">Plano Pro • Bloqueado</span>}
             </div>
           )}
 
           <button
             type="button"
-            onClick={() => onNavigate("login")}
+            onClick={onSair}
             title="Sair do painel"
             className={`w-full flex items-center py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors cursor-pointer ${
-              menuLateralAberto ? "gap-2 px-3" : "justify-center px-0"
+              rotulos ? "gap-2 px-3" : "justify-center px-0"
             }`}
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" />
-            {menuLateralAberto && <span>Sair do painel</span>}
+            {rotulos && <span>Sair do painel</span>}
           </button>
         </div>
       </aside>
@@ -921,19 +962,23 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
           menuLateralAberto ? "lg:pl-64" : "lg:pl-[72px]"
         }`}
       >
-        <header className="sticky top-0 z-30 border-b border-border/40 bg-card/90 backdrop-blur-xl">
+        {/* pt com safe-area: no iPhone (app e PWA, viewport-fit=cover) o
+            cabeçalho ficava por baixo do relógio e da bateria. */}
+        <header className="sticky top-0 z-30 border-b border-border/40 bg-card/90 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
           <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
             {/* No celular identifica a loja; no desktop a loja já está na
                 lateral, então o espaço vira o título da seção aberta. */}
             <div className="min-w-0 flex items-center gap-2.5">
-              {/* Marca da loja, sem ação. Antes levava ao site público, o que
-                  tirava o operador do painel no meio de um atendimento. */}
-              <div
-                aria-hidden="true"
-                className="lg:hidden h-9 w-9 shrink-0 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center"
+              {/* Abre a barra lateral como gaveta — o mesmo menu do desktop. */}
+              <button
+                type="button"
+                onClick={() => setGavetaAberta(true)}
+                aria-label="Abrir menu"
+                aria-expanded={gavetaAberta}
+                className="lg:hidden h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-xl border border-border/60 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
               >
-                <Store className="w-4 h-4 text-primary" />
-              </div>
+                <Menu className="w-4 h-4" />
+              </button>
               <div className="min-w-0">
                 <h1 className="font-bold text-foreground text-base tracking-tight truncate">
                   <span className="lg:hidden">{cardConfig.storeName}</span>
@@ -1054,15 +1099,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 </span>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => onNavigate("login")}
-              className="lg:hidden p-2 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-              title="Sair do painel"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -1114,7 +1150,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                 <button
                   type="button"
                   onClick={() => {
-                    const url = `${window.location.origin}/c/${currentSlug}`;
+                    const url = urlCadastroCliente(currentSlug);
                     navigator.clipboard.writeText(url);
                     showToast("Link de cadastro copiado para o clipboard!");
                   }}
@@ -1124,7 +1160,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <span>Copiar Link</span>
                 </button>
                 <a
-                  href={`/c/${currentSlug}`}
+                  href={urlCadastroCliente(currentSlug)}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-boomii px-4 py-2 text-xs font-bold flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-md cursor-pointer"
@@ -1266,7 +1302,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                         <button
                           type="button"
                           onClick={() => {
-                            const url = `${window.location.origin}/c/${currentSlug}`;
+                            const url = urlCadastroCliente(currentSlug);
                             navigator.clipboard.writeText(url);
                             showToast("Link de cadastro copiado!");
                           }}
@@ -1737,7 +1773,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                   <button
                     type="button"
                     onClick={() => {
-                      const url = `${window.location.origin}/c/${currentSlug}`;
+                      const url = urlCadastroCliente(currentSlug);
                       navigator.clipboard.writeText(url);
                       showToast("Link de cadastro copiado!");
                     }}
@@ -1855,12 +1891,12 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
         {currentTab === "aniversarios" && (
           <div className="space-y-8 animate-fade-in">
             <div>
-              <span className="label-eyebrow text-primary">Engajamento Automático</span>
+              <span className="label-eyebrow text-primary">Engajamento automático</span>
               <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">
-                Envios de Aniversário & Notificações de Recompensa
+                Aniversários & Recompensas
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Dispare notificações push diretas na tela de bloqueio dos celulares cadastrados.
+                Avisos que chegam na tela de bloqueio do celular dos clientes, pela carteira.
               </p>
             </div>
 
@@ -1881,7 +1917,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
                     <div className="p-6 rounded-xl bg-card border border-border/40 text-center space-y-2">
                       <Calendar className="w-6 h-6 text-muted-foreground mx-auto" />
                       <p className="text-xs font-semibold text-foreground">Nenhum aniversariante com data registrada</p>
-                      <p className="text-[11px] text-muted-foreground">Quando seus clientes informarem o aniversário no cadastro do cartão, eles aparecerão aqui para disparo de boomiis.</p>
+                      <p className="text-[11px] text-muted-foreground">Quando seus clientes informarem o aniversário no cadastro do cartão, eles aparecerão aqui para o envio de recompensas.</p>
                     </div>
                   ) : (
                     aniversariantes.map((c) => (
@@ -2636,69 +2672,20 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void }> = (
 
           <button
             type="button"
-            onClick={() => setMenuMaisAberto(true)}
-            aria-haspopup="dialog"
+            onClick={() => setGavetaAberta(true)}
+            aria-expanded={gavetaAberta}
             className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl min-w-[64px] transition-colors cursor-pointer ${
               ITENS_NAV.some((i) => !i.noRodape && i.id === currentTab)
                 ? "text-primary"
                 : "text-muted-foreground"
             }`}
           >
-            <MoreHorizontal className="w-5 h-5" />
-            <span className="text-[10px] font-semibold">Mais</span>
+            <Menu className="w-5 h-5" />
+            <span className="text-[10px] font-semibold">Menu</span>
           </button>
         </div>
       </nav>
       </div>
-
-      {/* ── FOLHA "MAIS" (CELULAR) ──
-          Abriga as abas de configuração, menos usadas no balcão que as
-          operacionais que ficam fixas na barra. */}
-      {menuMaisAberto && (
-        <div
-          className="lg:hidden fixed inset-0 z-[90] bg-background/80 backdrop-blur-sm flex items-end animate-fade-in"
-          onClick={() => setMenuMaisAberto(false)}
-          role="dialog"
-          aria-label="Mais seções"
-        >
-          <div
-            className="w-full rounded-t-3xl border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-border" />
-            {ITENS_NAV.filter((i) => !i.noRodape).map(({ id, rotulo, Icone }) => {
-              const ativo = currentTab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentTab(id);
-                    setMenuMaisAberto(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer border ${
-                    ativo
-                      ? "bg-primary/10 text-primary border-primary/30"
-                      : "text-foreground hover:bg-card border-transparent"
-                  }`}
-                >
-                  <Icone className="w-4 h-4 shrink-0" />
-                  <span>{rotulo}</span>
-                </button>
-              );
-            })}
-
-            <button
-              type="button"
-              onClick={() => onNavigate("login")}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-card transition-colors cursor-pointer border border-transparent"
-            >
-              <LogOut className="w-4 h-4 shrink-0" />
-              <span>Sair do painel</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── MODAL: LEITOR DE QR CODE DO CLIENTE (ETAPA 2) ── */}
       {scannerOpen && (

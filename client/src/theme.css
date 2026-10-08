@@ -136,6 +136,19 @@
   --shadow-card: 0 20px 50px -30px oklch(0 0 0 / 80%);
 }
 
+/* O Safari do iPhone amplia a página ao focar um campo com fonte menor que
+   16px — e não desfaz o zoom ao sair dele, o que quebrava o layout do app.
+   Só em telas de toque: no desktop os campos mantêm o tamanho do design.
+   Fica fora de @layer de propósito: estilo sem camada vence as utilitárias
+   do Tailwind (text-xs, text-sm) que os campos usam. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
