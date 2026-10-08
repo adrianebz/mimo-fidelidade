@@ -134,6 +134,19 @@ jobs:
           # Remove os arquivos temporários de chave do disco
           rm -f "$RUNNER_TEMP/cert_raw.p12" "$RUNNER_TEMP/cert_key.pem" "$RUNNER_TEMP/cert_clean.p12"
 
+      - name: Selecionar versão mais recente do Xcode
+        run: |
+          echo "Versões de Xcode disponíveis no runner:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          LATEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$LATEST_XCODE" ]; then
+            echo "Ativando: $LATEST_XCODE"
+            sudo xcode-select -s "$LATEST_XCODE"
+          fi
+          xcodebuild -version
+          echo "SDK iphoneos ativo:"
+          xcrun --sdk iphoneos --show-sdk-version || true
+
       - name: Compilar Arquivo .xcarchive (Xcode Release)
         run: |
           if [ -d "ios/App/App.xcworkspace" ]; then
@@ -145,6 +158,7 @@ jobs:
           xcodebuild $TARGET \
                      -scheme App \
                      -configuration Release \
+                     -sdk iphoneos \
                      -archivePath "$RUNNER_TEMP/App.xcarchive" \
                      -destination "generic/platform=iOS" \
                      CODE_SIGN_STYLE="Manual" \
