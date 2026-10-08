@@ -52,7 +52,11 @@
     {
       "collectionGroup": "cartoes",
       "fieldPath": "expiraEm",
-      "ttlConfig": {}
+      "ttlConfig": {},
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION"}
+      ]
     }
   ]
 }

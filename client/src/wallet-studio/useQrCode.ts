@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
  * Gera o QR Code do cartão como data URI.
  *
  * O conteúdo é o mesmo formato lido pelo scanner do balcão
- * ("MIMO:{cartaoId}:{codigo}"), então o que o lojista vê na prévia é
+ * ("BOOMII:{cartaoId}:{codigo}"), então o que o lojista vê na prévia é
  * exatamente o que o passe real vai carregar.
  */
 export function useQrCode(value: string, enabled = true): string {

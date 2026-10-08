@@ -16,12 +16,12 @@ const clienteId = '5511999998888';
 const objectId = `${WALLET_ISSUER_ID}.${slugClean}_${clienteId}_c1`;
 
 const heroBannerUri = selos === 0 
-  ? 'https://mimo-fidelidade.web.app/banners/hero-0.jpg' 
-  : (selos === 4 ? 'https://mimo-fidelidade.web.app/banners/hero-4.jpg' : `https://mimo-fidelidade.web.app/banners/hero-${selos}.jpg`);
+  ? 'https://boomii-fidelidade.web.app/banners/hero-0.jpg' 
+  : (selos === 4 ? 'https://boomii-fidelidade.web.app/banners/hero-4.jpg' : `https://boomii-fidelidade.web.app/banners/hero-${selos}.jpg`);
 
 const programLogoUri = (slugClean === 'nox_dessert_club' || slugClean === 'nox-dessert-club')
-  ? 'https://mimo-fidelidade.web.app/logos/nox-dessert-club.jpg'
-  : `https://mimo-fidelidade.web.app/logos/${slugClean}.jpg`;
+  ? 'https://boomii-fidelidade.web.app/logos/nox-dessert-club.jpg'
+  : `https://boomii-fidelidade.web.app/logos/${slugClean}.jpg`;
 
 const loyaltyClass = {
   id: classId,
@@ -54,7 +54,7 @@ const loyaltyObject = {
   accountId: clienteId,
   accountName: 'Cliente VIP',
   loyaltyPoints: {
-    localizedLabel: { defaultValue: { language: 'pt-BR', value: 'Cartão Mimo' } },
+    localizedLabel: { defaultValue: { language: 'pt-BR', value: 'Cartão Boomii' } },
     balance: { string: `${selos} / 10 SELOS` }
   },
   heroImage: {
@@ -78,8 +78,8 @@ const loyaltyObject = {
       body: 'Cliente VIP'
     },
     {
-      id: 'premio_mimo',
-      header: 'PRÊMIO DO MIMO',
+      id: 'premio_recompensa',
+      header: 'SUA RECOMPENSA',
       body: premio
     },
     {
@@ -142,13 +142,13 @@ const loyaltyObject = {
   },
   barcode: {
     type: 'QR_CODE',
-    value: `MIMO:${slugClean}_${clienteId}_1:123456`,
-    alternateText: 'MIMO-PASS-8888'
+    value: `BOOMII:${slugClean}_${clienteId}_1:123456`,
+    alternateText: 'BOOMII-PASS-8888'
   },
   linksModuleData: {
     uris: [
-      { kind: 'walletobjects#uri', uri: 'https://mimo-fidelidade.web.app', description: 'Acessar Portal do Clube MIMO' },
-      { kind: 'walletobjects#uri', uri: `https://mimo-fidelidade.web.app/c/${lojaSlug}`, description: 'Ver Minha Cartela & Regulamento' }
+      { kind: 'walletobjects#uri', uri: 'https://boomii-fidelidade.web.app', description: 'Acessar Portal do Clube BOOMII' },
+      { kind: 'walletobjects#uri', uri: `https://boomii-fidelidade.web.app/c/${lojaSlug}`, description: 'Ver Minha Cartela & Regulamento' }
     ]
   }
 };

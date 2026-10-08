@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.mimo.scanner'
+    namespace 'com.boomii.scanner'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.mimo.scanner"
+        applicationId "com.boomii.scanner"
         minSdk 24
         targetSdk 34
         versionCode 1

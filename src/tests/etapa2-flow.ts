@@ -4,7 +4,7 @@ import {
   cadastrarClienteECartao,
   carimbarSelo,
   resgatarPremio
-} from '../../client/src/services/mimoWalletService.js';
+} from '../../client/src/services/boomiiWalletService.js';
 import { SEED_MERCHANTS } from '../../client/src/data/seedData.js';
 
 async function runEtapa2Tests() {
@@ -60,7 +60,7 @@ async function runEtapa2Tests() {
 
   // 4. Carimbo de Selos via QR Code
   console.log('\n4. Carimbo de Selo no Balcão via Scanner');
-  const qrCodeSimulado = `MIMO:${resCadastro.cartaoId}:${totp1}`;
+  const qrCodeSimulado = `BOOMII:${resCadastro.cartaoId}:${totp1}`;
   
   const stamp1 = await carimbarSelo({
     qr: qrCodeSimulado,
@@ -92,13 +92,13 @@ async function runEtapa2Tests() {
   for (let i = stamp1.selos + 1; i <= 10; i++) {
     // Força avanço simulando tempo decorrido
     stampFinal = await carimbarSelo({
-      qr: `MIMO:${resCadastro.cartaoId}:123456`,
+      qr: `BOOMII:${resCadastro.cartaoId}:123456`,
       pin: '1234',
       lojaId: 'casa-nuvem'
     }).catch(() => ({ selos: i, meta: 10, completo: i >= 10, premio: '1 Café Filtrado Especial + Pão de Queijo Canastra' }));
   }
 
-  assert(stampFinal.completo === true || stampFinal.selos >= 10, '10º selo marca cartão como completo / mimo liberado');
+  assert(stampFinal.completo === true || stampFinal.selos >= 10, '10º selo marca cartão como completo / boomii liberado');
 
   // Resgate
   const resgate = await resgatarPremio({
@@ -107,7 +107,7 @@ async function runEtapa2Tests() {
     lojaId: 'casa-nuvem'
   });
 
-  assert(resgate.sucesso === true, 'Resgate do mimo efetuado com sucesso');
+  assert(resgate.sucesso === true, 'Resgate da recompensa efetuado com sucesso');
   assert(resgate.novoCiclo === 2, 'Ciclo reiniciado para #2 com selos zerados');
 
   // 7. Teste de Status Financeiro: Adimplente vs Inadimplente
@@ -129,7 +129,7 @@ async function runEtapa2Tests() {
   let bloqueouCarimboInadimplente = false;
   try {
     await carimbarSelo({
-      qr: 'MIMO:padaria-da-ana_5511999998888_1:123456',
+      qr: 'BOOMII:padaria-da-ana_5511999998888_1:123456',
       pin: '1234',
       lojaId: 'padaria-da-ana' // Inadimplente
     });

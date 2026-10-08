@@ -1,0 +1,176 @@
+name: Build & Deploy iOS (App Store / Unlisted)
+
+# SEGURANÇA: Restrito a disparo manual autenticado por colaboradores do repositório
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_appstore:
+        description: 'Enviar automaticamente para o App Store Connect?'
+        required: true
+        type: boolean
+        default: true
+      build_number:
+        description: 'Número da Build (Incremental, ex: 1, 2, 3...)'
+        required: false
+        type: string
+        default: ''
+
+# SEGURANÇA: Token do GitHub em modo somente leitura (Princípio do menor privilégio)
+permissions:
+  contents: read
+
+# Evita deploys simultâneos conflitantes
+concurrency:
+  group: ios-deployment
+  cancel-in-progress: false
+
+jobs:
+  build-ios:
+    name: Compilar e Assinar iOS
+    runs-on: macos-14 # Runner oficial macOS com Apple Silicon (gratuito)
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Validar Segredos Obrigatórios
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+          PROV_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APP_STORE_KEY: ${{ secrets.APP_STORE_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+        run: |
+          echo "Verificando segredos configurados..."
+          MISSING=""
+          [ -z "$CERT_P12" ] && MISSING="$MISSING APPLE_CERTIFICATE_P12"
+          [ -z "$CERT_PASS" ] && MISSING="$MISSING APPLE_CERTIFICATE_PASS"
+          [ -z "$PROV_PROFILE" ] && MISSING="$MISSING APPLE_PROVISIONING_PROFILE"
+          if [ "${{ inputs.upload_to_appstore }}" = "true" ]; then
+            [ -z "$APP_STORE_KEY" ] && MISSING="$MISSING APP_STORE_PRIVATE_KEY"
+            [ -z "$KEY_ID" ] && MISSING="$MISSING APP_STORE_KEY_ID"
+            [ -z "$ISSUER_ID" ] && MISSING="$MISSING APP_STORE_ISSUER_ID"
+          fi
+          if [ -n "$MISSING" ]; then
+            echo "::error::Os seguintes segredos estão ausentes no GitHub Secrets:$MISSING"
+            echo "Consulte o guia docs/apple-appstore-unlisted.md para configurá-los."
+            exit 1
+          fi
+          echo "Todos os segredos necessários estão presentes."
+
+      - name: Instalar dependências da raiz e do cliente
+        run: |
+          npm ci || npm install
+          npm --prefix client ci || npm --prefix client install
+
+      - name: Compilar Frontend React (Vite)
+        run: |
+          npm run client:build
+
+      - name: Sincronizar Capacitor com iOS
+        run: |
+          npx cap sync ios
+
+      - name: Configurar Número da Build
+        if: "${{ inputs.build_number != '' }}"
+        run: |
+          cd ios/App
+          xcrun agvtool new-version -all "${{ inputs.build_number }}"
+
+      - name: Instalar Certificado e Perfil no Chaveiro Temporário (Seguro)
+        env:
+          CERT_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+          PROV_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          # 1. Cria chaveiro isolado com senha efêmera aleatória
+          KEYCHAIN_PASS=$(openssl rand -hex 16)
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+
+          # 2. Decodifica e importa certificado p12
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # 3. Instala Perfil de Provisionamento (.mobileprovision)
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROV_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/embedded.mobileprovision
+
+          # Remove o p12 temporário do disco
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Compilar Arquivo .xcarchive (Xcode Release)
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace \
+                     -scheme App \
+                     -configuration Release \
+                     -archivePath "$RUNNER_TEMP/App.xcarchive" \
+                     -destination "generic/platform=iOS" \
+                     archive \
+                     CODE_SIGN_STYLE=Manual
+
+      - name: Exportar Pacote .ipa
+        run: |
+          xcodebuild -exportArchive \
+                     -archivePath "$RUNNER_TEMP/App.xcarchive" \
+                     -exportOptionsPlist ios/App/App/ExportOptions.plist \
+                     -exportPath "$RUNNER_TEMP/output"
+
+      - name: Salvar Artefato .ipa no GitHub (Download Seguro)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Boomii-Lojista-iOS
+          path: ${{ runner.temp }}/output/*.ipa
+          retention-days: 7
+
+      - name: Enviar para o App Store Connect
+        if: "${{ inputs.upload_to_appstore == true }}"
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          PRIVATE_KEY_CONTENT: ${{ secrets.APP_STORE_PRIVATE_KEY }}
+        run: |
+          # 1. Configura a chave privada p8 na pasta segura exigida pelo altool
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_FILE=~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          echo "$PRIVATE_KEY_CONTENT" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+
+          # 2. Localiza o arquivo .ipa gerado
+          IPA_PATH=$(find "$RUNNER_TEMP/output" -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "::error::Arquivo .ipa não encontrado em $RUNNER_TEMP/output"
+            exit 1
+          fi
+
+          echo "Enviando $IPA_PATH para o App Store Connect..."
+          xcrun altool --upload-app \
+                       -f "$IPA_PATH" \
+                       -t ios \
+                       --apiKey "$KEY_ID" \
+                       --apiIssuer "$ISSUER_ID" \
+                       --show-progress
+
+          echo "Upload concluído com sucesso!"
+
+      # HIGIENE DE SEGURANÇA: Destruição de chaveiro e chaves privadas mesmo se falhar
+      - name: Limpeza Segura de Chaves e Credenciais
+        if: always()
+        run: |
+          echo "Limpando chaveiro e credenciais temporárias do runner..."
+          security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
+          rm -rf ~/.appstoreconnect/private_keys
+          rm -rf "$RUNNER_TEMP/output"
+          rm -rf "$RUNNER_TEMP/App.xcarchive"
+          echo "Chaves destruídas com sucesso."

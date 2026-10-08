@@ -116,7 +116,7 @@ export const ManageCards: React.FC<ManageCardsProps> = ({
               </div>
             </div>
 
-            {/* Embedded Realistic Wallet Pass Preview (Dark card with 1/10 stamps, gold coin, smile mascot) */}
+            {/* Prévia do passe na carteira (cartão escuro, 1/10 selos, moeda dourada) */}
             <div className="bg-[#0F0F10] rounded-2xl p-5 text-white shadow-lg relative overflow-hidden mb-5 border border-slate-800">
               {/* Card Header inside pass */}
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
@@ -134,7 +134,7 @@ export const ManageCards: React.FC<ManageCardsProps> = ({
 
               {/* Grid of 10 stamps */}
               <div className="grid grid-cols-5 gap-2 my-3">
-                {/* Stamp 1: Gold coin with Mimo smile stamped */}
+                {/* Selo 1: moeda dourada conquistada */}
                 <div className="aspect-square rounded-full bg-amber-400 flex items-center justify-center shadow-md shadow-amber-400/30 border-2 border-amber-300">
                   <span className="text-sm">🪙</span>
                 </div>

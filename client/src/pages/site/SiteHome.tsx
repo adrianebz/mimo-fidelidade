@@ -46,7 +46,7 @@ const beneficios = [
   {
     titulo: "Sua marca, sempre",
     texto:
-      "Na carteira do consumidor aparece o nome e o visual da sua loja — a Mimo fica nos bastidores.",
+      "Na carteira do consumidor aparece o nome e o visual da sua loja — a Boomii fica nos bastidores.",
   },
   {
     titulo: "Notificação que traz de volta",
@@ -71,21 +71,21 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
               Seu cliente <span className="text-primary">sempre com você.</span>
             </h1>
             <p className="mt-5 max-w-md text-lg text-muted-foreground">
-              A Mimo coloca o cartão de fidelidade da sua loja dentro da Apple Wallet e da Google
+              A Boomii coloca o cartão de fidelidade da sua loja dentro da Apple Wallet e da Google
               Wallet. Dez selos, uma recompensa, nenhum aplicativo para o cliente instalar.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => onNavigate('contato')}
-                className="btn-mimo cursor-pointer"
+                className="btn-boomii cursor-pointer"
               >
                 Quero para minha loja
               </button>
               <button
                 type="button"
                 onClick={() => onNavigate('como-funciona')}
-                className="btn-mimo-ghost hover:bg-secondary cursor-pointer"
+                className="btn-boomii-ghost hover:bg-secondary cursor-pointer"
               >
                 Ver como funciona
               </button>
@@ -98,7 +98,7 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
           <div className="relative">
             <img
               src={mascote}
-              alt="Mascote da Mimo segurando um celular com o cartão de fidelidade"
+              alt="Mascote da Boomii segurando um celular com o cartão de fidelidade"
               width={1024}
               height={1024}
               className="mx-auto w-full max-w-md rounded-3xl object-cover"
@@ -112,7 +112,7 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
         <div className="surface-panel grid gap-10 p-8 md:grid-cols-2 md:p-12">
           <div>
             <span className="label-eyebrow">O que o cliente vê</span>
-            <h2 className="mt-3 text-3xl">Um cartão da sua loja, não da Mimo.</h2>
+            <h2 className="mt-3 text-3xl">Na carteira do cliente, a marca é a sua.</h2>
             <p className="mt-4 text-muted-foreground">
               O nome, as cores e a recompensa são definidos por você. A cada compra o saldo muda
               sozinho no celular do cliente.
@@ -145,7 +145,7 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
 
       {/* Benefícios */}
       <section className="mx-auto max-w-6xl px-5 pb-20">
-        <span className="label-eyebrow">Por que Mimo</span>
+        <span className="label-eyebrow">Por que Boomii</span>
         <h2 className="mt-3 max-w-xl text-4xl">
           Fidelidade que faz seu cliente <span className="text-primary">voltar.</span>
         </h2>
@@ -166,7 +166,7 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
       <section className="mx-auto max-w-6xl px-5 pb-24">
         <div className="surface-panel flex flex-col items-center gap-6 p-12 text-center">
           <h2 className="max-w-xl text-4xl">
-            Mais que pontos. <span className="text-primary">Mimos.</span>
+            Mais que pontos. <span className="text-primary">Recompensas.</span>
           </h2>
           <p className="max-w-md text-muted-foreground">
             Conte um pouco sobre a sua loja e montamos o seu programa de fidelidade.
@@ -174,7 +174,7 @@ export const SiteHome: React.FC<SiteHomeProps> = ({ onNavigate }) => {
           <button
             type="button"
             onClick={() => onNavigate('contato')}
-            className="btn-mimo cursor-pointer"
+            className="btn-boomii cursor-pointer"
           >
             Começar agora
           </button>

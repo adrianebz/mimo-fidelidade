@@ -17,6 +17,28 @@ build/
 *.pem
 service-account*.json
 
+# Certificados e chaves da Apple (App Store & Apple Wallet)
+# NUNCA versionar: quem tiver estes arquivos pode assinar e publicar binários
+*.p12
+*.p8
+*.cer
+*.csr
+*.mobileprovision
+AuthKey_*.p8
+*.base64.txt
+distribution.*
+pass.*
+.credentials/
+credentials/
+
+# iOS e Xcode artifacts
+ios/App/build/
+ios/App/Pods/
+ios/App/.build/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+
 # Firebase cache
 .firebase/
 firebase-debug.log*

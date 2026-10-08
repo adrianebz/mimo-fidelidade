@@ -285,8 +285,8 @@ export async function uploadCustomWalletBanner(
 ): Promise<string> {
   const isZero = (config.stampsFilled ?? 0) === 0;
   const fallbackUrl = isZero 
-    ? 'https://mimo-fidelidade.web.app/banners/hero-0.jpg'
-    : 'https://mimo-fidelidade.web.app/banners/hero-4.jpg';
+    ? 'https://boomii-fidelidade.web.app/banners/hero-0.jpg'
+    : 'https://boomii-fidelidade.web.app/banners/hero-4.jpg';
 
   try {
     const blob = await withTimeout(generateWalletHeroBanner(config), 2000, null);
@@ -318,8 +318,8 @@ export async function uploadCustomWalletLogo(
 ): Promise<string> {
   const slug = (lojaSlug || 'loja').toLowerCase().trim();
   const fallbackUrl = slug === 'nox-dessert-club' || slug === 'nox_dessert_club'
-    ? 'https://mimo-fidelidade.web.app/logos/nox-dessert-club.jpg'
-    : `https://mimo-fidelidade.web.app/logos/${slug}.jpg`;
+    ? 'https://boomii-fidelidade.web.app/logos/nox-dessert-club.jpg'
+    : `https://boomii-fidelidade.web.app/logos/${slug}.jpg`;
 
   if (logoDataUrl && logoDataUrl.startsWith('data:image')) {
     try {

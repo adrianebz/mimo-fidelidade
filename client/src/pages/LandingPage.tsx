@@ -74,7 +74,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       <section className="space-y-8 pt-6">
         <div className="text-center space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-teal-600">
-            DIFERENCIAIS DO MIMO
+            DIFERENCIAIS DO BOOMII
           </span>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
             Muito superior ao cartão de papel tradicional

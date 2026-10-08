@@ -49,9 +49,9 @@ export function buildApplePassJson(
 
   return {
     formatVersion: 1,
-    passTypeIdentifier: process.env.APPLE_PASS_TYPE_ID || 'pass.com.mimo.fidelidade',
+    passTypeIdentifier: process.env.APPLE_PASS_TYPE_ID || 'pass.com.boomii.fidelidade',
     serialNumber: card.serial,
-    teamIdentifier: process.env.APPLE_TEAM_ID || 'MIMO123456',
+    teamIdentifier: process.env.APPLE_TEAM_ID || 'BOOMII123456',
     organizationName: org.publicName,
     description: `Fidelidade ${org.publicName}`,
     logoText: org.publicName,
@@ -102,7 +102,7 @@ export function buildApplePassJson(
         {
           key: 'platform',
           label: 'Plataforma',
-          value: 'MIMO — Fidelidade em Carteira Digital'
+          value: 'BOOMII — Fidelidade em Carteira Digital'
         }
       ]
     },

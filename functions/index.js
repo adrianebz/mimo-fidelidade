@@ -3,12 +3,14 @@ const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
-const { Readable } = require('stream');
 const { authenticator } = require('otplib');
 const { api, ISSUER_ID, SA, jwt } = require('./wallet');
-const walletIcons = require('./wallet-icons');
+const apple = require('./apple-wallet');
+const { renderStampBanner } = require('./banner');
+const { montarCamposDoPasse, paraTextModules, paraLabelValueRows, resolverCampos } = require('./pass-fields');
+const notificacoes = require('./notificacoes');
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
 }
 
@@ -26,6 +28,24 @@ const FN_BASE = () =>
   `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net`;
 
 /**
+ * Domínios autorizados a acionar o link "Adicionar à Carteira" do Google.
+ *
+ * O `.web.app` e o domínio próprio servem o MESMO site de Hosting, então os
+ * dois precisam constar: um cliente pode abrir a página de cadastro por
+ * qualquer um dos dois e o Google valida a origem da requisição.
+ */
+const ORIGENS_PERMITIDAS = [
+  'https://boomii-fidelidade.web.app',
+  'https://www.boomii.com.br',
+  'https://boomii.com.br',
+  // Domínio da marca antiga: convites QR já impressos e links já distribuídos
+  // apontam para cá, e a página de cadastro continua servida nesse endereço.
+  // Remover só depois que esses convites saírem de circulação.
+  'https://mimo-fidelidade.web.app',
+  'http://localhost:5173',
+];
+
+/**
  * Monta a definição da loyaltyClass (identidade visual da loja na carteira).
  *
  * Usada em dois lugares: pelo trigger sincronizarClasse (que cria/atualiza a
@@ -35,6 +55,7 @@ const FN_BASE = () =>
  */
 function montarLoyaltyClass(loja, slug, versao, classId) {
   const design = loja.design || null;
+  const camposDaClasse = resolverCampos(loja);
   const meta = design?.stamps?.total || loja.regras?.meta || 10;
   const bgColor = design?.colors?.background || loja.layout?.corFundo || '#141416';
   const nomePrograma = design?.brand?.tagline || loja.layout?.nomePrograma || 'Programa de Fidelidade Digital';
@@ -59,9 +80,11 @@ function montarLoyaltyClass(loja, slug, versao, classId) {
       },
     },
     hexBackgroundColor: bgColor,
-    accountNameLabel: 'CLIENTE VIP',
+    // Rótulos do cabeçalho da carteira: também seguem o Estúdio, para o passe
+    // não misturar os nomes do lojista com termos fixos nossos.
+    accountNameLabel: camposDaClasse.cliente.label,
     accountIdLabel: 'CÓDIGO DO CARTÃO',
-    rewardsTierLabel: 'STATUS',
+    rewardsTierLabel: camposDaClasse.status.label,
     countryCode: 'BR',
     reviewStatus: 'UNDER_REVIEW',
     allowMultipleUsersPerObject: true,
@@ -101,29 +124,28 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
   const meta = c.meta || loja.regras?.meta || 10;
   const selos = c.selos || 0;
   const faltam = Math.max(0, meta - selos);
-  const premio = loja.layout?.premio || loja.regras?.premio || '1 Mimo Especial';
+  const premio = loja.layout?.premio || loja.regras?.premio || '1 Recompensa Especial';
   const validadeDias = loja.layout?.validadeDias || loja.regras?.validadeDias || 30;
   const instrucaoResgate = loja.layout?.instrucaoResgate || 'Here you will see your of stamps';
-  const passCode = `MIMO-PASS-${snap.id.slice(-4).toUpperCase()}`;
+  const passCode = `BOOMII-PASS-${snap.id.slice(-4).toUpperCase()}`;
+
+  // Os campos vêm do que o lojista configurou no Estúdio (`design.fields`):
+  // quais aparecem, em que ordem e com que rótulo. Antes eram fixos aqui, o que
+  // fazia o passe real divergir da prévia.
+  const campos = montarCamposDoPasse(loja, {
+    nome: clienteNome,
+    selos,
+    meta,
+    recompensa: premio,
+    tagline: loja.design?.brand?.tagline || loja.layout?.nomePrograma || '',
+    unidade: c.unidade,
+    status: c.status === 'completo' ? 'Completo' : 'Ativo',
+    ciclo: c.ciclo || 1,
+    validadeDias,
+  });
 
   const textModulesData = [
-    {
-      id: 'cliente_vip',
-      header: 'CLIENTE VIP',
-      body: clienteNome,
-    },
-    {
-      id: 'premio_mimo',
-      header: 'PRÊMIO DO MIMO',
-      body: premio,
-    },
-    {
-      id: 'progresso_ciclo',
-      header: 'PROGRESSO DO CICLO',
-      body: c.status === 'completo'
-        ? `Cartão completo! (${selos}/${meta} selos). Retire seu mimo no caixa.`
-        : `${selos} de ${meta} selos acumulados (Faltam ${faltam} selos)`,
-    },
+    ...paraTextModules(campos),
     {
       id: 'regras_resgate',
       header: 'INSTRUÇÕES NO BALCÃO',
@@ -141,7 +163,7 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
       localizedLabel: {
         defaultValue: {
           language: 'pt-BR',
-          value: 'Cartão Mimo'
+          value: 'Cartão Boomii'
         }
       },
       balance: { string: `${selos} / ${meta} SELOS` },
@@ -158,37 +180,25 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
       }
     },
     textModulesData,
+    // Mesma lista de campos dos textModules, em duas colunas por linha.
     infoModuleData: {
-      labelValueRows: [
-        {
-          columns: [
-            { label: 'CLIENTE VIP', value: clienteNome },
-            { label: 'CÓDIGO DO CARTÃO', value: c.clienteId || clienteCelular }
-          ]
-        },
-        {
-          columns: [
-            { label: 'STATUS', value: c.status === 'completo' ? 'Completo' : 'Ativo' },
-            { label: 'PRÊMIO', value: premio }
-          ]
-        }
-      ]
+      labelValueRows: paraLabelValueRows(campos),
     },
     barcode: {
       type: 'QR_CODE',
-      value: `MIMO:${snap.id}:${c.totpSecret ? authenticator.generate(c.totpSecret) : '8821'}`,
+      value: `BOOMII:${snap.id}:${c.totpSecret ? authenticator.generate(c.totpSecret) : '8821'}`,
       alternateText: passCode,
     },
     linksModuleData: {
       uris: [
         {
           kind: 'walletobjects#uri',
-          uri: 'https://mimo-fidelidade.web.app',
-          description: 'Acessar Portal do Clube MIMO'
+          uri: 'https://boomii-fidelidade.web.app',
+          description: 'Acessar Portal do Clube BOOMII'
         },
         {
           kind: 'walletobjects#uri',
-          uri: `https://mimo-fidelidade.web.app/c/${loja.slug || snap.id.split('_')[0]}`,
+          uri: `https://boomii-fidelidade.web.app/c/${loja.slug || snap.id.split('_')[0]}`,
           description: 'Ver Minha Cartela & Regulamento'
         }
       ]
@@ -219,7 +229,11 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
     iss: saCredentials.client_email,
     aud: 'google',
     typ: 'savetowallet',
-    origins: ['https://mimo-fidelidade.web.app', 'http://localhost:5173'],
+    // O Google recusa o link "Adicionar à Carteira" se ele for acionado de um
+    // domínio fora desta lista. Precisa conter TODO endereço de onde a página
+    // de cadastro do cliente pode ser aberta — o .web.app e o domínio próprio
+    // servem o mesmo site, então os dois entram aqui.
+    origins: ORIGENS_PERMITIDAS,
     payload: {
       loyaltyClasses: [loyaltyClass],
       loyaltyObjects: [obj]
@@ -230,7 +244,7 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
   try {
     token = jwt.sign(claims, saCredentials.private_key, { algorithm: 'RS256' });
   } catch {
-    token = jwt.sign(claims, 'mimo_secret_key_demo');
+    token = jwt.sign(claims, 'boomii_secret_key_demo');
   }
 
   return `https://pay.google.com/gp/v/save/${token}`;
@@ -251,17 +265,38 @@ exports.sincronizarClasse = onDocumentWritten(
     // 'wallet.classSincronizadaEm' no próprio documento que a disparou. Sem esta
     // checagem, cada gravação reativa a function indefinidamente (e reprocessa o
     // PATCH de todos os cartões do lojista a cada ciclo).
-    const versaoAntes = lojaAntes?.layout?.versao || lojaAntes?.wallet?.versao;
-    const versaoDepois = loja.layout?.versao || loja.wallet?.versao;
+    const versaoAntes = lojaAntes?.layout?.versao || lojaAntes?.wallet?.versao || lojaAntes?.design?.version;
+    const versaoDepois = loja.layout?.versao || loja.wallet?.versao || loja.design?.version;
     const layoutMudou = JSON.stringify(lojaAntes?.layout || {}) !== JSON.stringify(loja.layout || {});
-    const jaSincronizada = !!lojaAntes && versaoAntes === versaoDepois && !layoutMudou;
+    const designMudou = JSON.stringify(lojaAntes?.design || {}) !== JSON.stringify(loja.design || {});
+    const regrasMudou = JSON.stringify(lojaAntes?.regras || {}) !== JSON.stringify(loja.regras || {});
+    const jaSincronizada = !!lojaAntes && versaoAntes === versaoDepois && !layoutMudou && !designMudou && !regrasMudou;
     if (jaSincronizada) return;
 
     const slug = (loja.slug || event.params.lojaId || 'loja').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    const versao = loja.layout?.versao || loja.wallet?.versao || 'v3';
+    const versao = loja.layout?.versao || loja.wallet?.versao || loja.design?.version || 'v3';
     const classId = loja.wallet?.classId || `${ISSUER_ID}.${slug}_${versao}`;
 
     const payload = montarLoyaltyClass(loja, slug, versao, classId);
+
+    // Apple Wallet: o visual do passe é gerado na hora do download, então basta
+    // avisar os iPhones que há versão nova — eles rebaixam o .pkpass sozinhos.
+    try {
+      const db = admin.firestore();
+      const slugOuId = loja.slug || event.params.lojaId;
+      const snaps = await Promise.all([
+        db.collection('cartoes').where('lojaId', '==', slugOuId).get(),
+        db.collection('cartoes').where('lojaId', '==', event.params.lojaId).get(),
+      ]);
+      const cardIds = new Set();
+      snaps.forEach((s) => s.docs.forEach((d) => cardIds.add(d.id)));
+      if (cardIds.size > 0) {
+        await apple.notificarDispositivosApple([...cardIds]);
+        console.log(`Apple Wallet: notificados ${cardIds.size} cartões sobre alteração no design da loja.`);
+      }
+    } catch (err) {
+      console.warn('Apple Wallet: falha ao notificar novo design:', err.message);
+    }
 
     try {
       try {
@@ -279,22 +314,28 @@ exports.sincronizarClasse = onDocumentWritten(
 
       // Propagar o novo design para TODOS os cartões existentes do lojista
       const db = admin.firestore();
-      const cartoesSnap = await db.collection('cartoes').where('lojaId', '==', loja.slug || event.params.lojaId).get();
-      
-      const patchPromises = cartoesSnap.docs.map(async (cartaoDoc) => {
-        const c = cartaoDoc.data();
+      const slugOuId = loja.slug || event.params.lojaId;
+      const snaps = await Promise.all([
+        db.collection('cartoes').where('lojaId', '==', slugOuId).get(),
+        db.collection('cartoes').where('lojaId', '==', event.params.lojaId).get(),
+      ]);
+      const cardMap = new Map();
+      snaps.forEach((s) => s.docs.forEach((d) => cardMap.set(d.id, d.data())));
+
+      const patchPromises = Array.from(cardMap.entries()).map(async ([cartaoId, c]) => {
         if (!c.wallet?.objectId) return;
-        const metaAtual = c.meta || loja.regras?.meta || 10;
-        
+        const metaAtual = c.meta || loja.design?.stamps?.total || loja.regras?.meta || 10;
+        const selosAtual = c.selos || 0;
+
         const objPatch = {
           heroImage: {
             sourceUri: {
-              uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slug}&selos=${c.selos || 0}&v=${Date.now()}`
+              uri: `https://us-central1-${process.env.GCLOUD_PROJECT || 'mimo-2d6eb'}.cloudfunctions.net/generateBanner?lojaId=${slug}&selos=${selosAtual}&meta=${metaAtual}&v=${Date.now()}`
             },
             contentDescription: {
               defaultValue: {
                 language: 'pt-BR',
-                value: `Progresso do Ciclo: ${c.selos || 0} de ${metaAtual} selos`
+                value: `Progresso do Ciclo: ${selosAtual} de ${metaAtual} selos`
               }
             }
           }
@@ -448,6 +489,8 @@ exports.criarCartao = onCall(
     if (!existente.empty) {
       const cartaoSnap = existente.docs[0];
       const saveUrl = await gerarSaveUrl(cartaoSnap, loja, clientePayload);
+      // Cartões emitidos antes da Apple Wallet ganham o token na primeira consulta.
+      const appleToken = await apple.garantirAuthToken(cartaoSnap.ref, cartaoSnap.data());
       return {
         cartaoId: cartaoSnap.id,
         jaExistia: true,
@@ -455,6 +498,7 @@ exports.criarCartao = onCall(
         meta: cartaoSnap.data().meta || 10,
         status: cartaoSnap.data().status,
         saveUrl,
+        applePassUrl: apple.urlDownloadPasse(cartaoSnap.id, appleToken),
       };
     }
 
@@ -488,6 +532,9 @@ exports.criarCartao = onCall(
         ultimaSync: admin.firestore.FieldValue.serverTimestamp(),
       },
       ultimoSeloEm: null,
+      // Token exigido pela Apple em "Authorization: ApplePass <token>" nas
+      // chamadas de registro/atualização feitas pelo iPhone.
+      apple: { authToken: apple.novoAuthToken() },
       criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -503,6 +550,7 @@ exports.criarCartao = onCall(
       meta,
       status: 'ativo',
       saveUrl,
+      applePassUrl: apple.urlDownloadPasse(cartaoId, cartaoData.apple.authToken),
       totpSecret,
     };
   }
@@ -520,12 +568,15 @@ exports.carimbar = onCall(
     let codigo = null;
 
     if (qr) {
-      // Formato esperado: "MIMO:cartaoId:123456"
+      // Formato esperado: "BOOMII:cartaoId:123456".
+      // O prefixo legado "MIMO:" continua aceito: os cartões emitidos antes da
+      // troca de marca já estão nas carteiras dos clientes e não podem ser reemitidos.
       const partes = String(qr).trim().split(':');
-      if (partes[0] === 'MIMO' && partes.length >= 3) {
+      const prefixoValido = partes[0] === 'BOOMII' || partes[0] === 'MIMO';
+      if (prefixoValido && partes.length >= 3) {
         cartaoId = partes[1];
         codigo = partes[2];
-      } else if (partes.length === 2 && partes[0] === 'MIMO') {
+      } else if (partes.length === 2 && prefixoValido) {
         cartaoId = partes[1];
       } else {
         cartaoId = qr;
@@ -652,11 +703,25 @@ exports.carimbar = onCall(
       const novoStatus = completo ? 'completo' : 'ativo';
       const pendentesTotal = (cartao.selosPendentes || 0) + excedente;
 
+      // Notificação na carteira, gravada na mesma transação do selo: o trigger
+      // atualizarPasse entrega para Apple e Google. Texto conforme o painel.
+      const aviso = notificacoes.avisoDeSelo(loja, {
+        selos: novosSelos,
+        meta,
+        creditados,
+        nome: cartao.clienteNome,
+      });
+
       tx.update(cartaoRef, {
         selos: novosSelos,
         status: novoStatus,
         selosPendentes: pendentesTotal,
         ultimoSeloEm: admin.firestore.FieldValue.serverTimestamp(),
+        ...(aviso ? { aviso } : {}),
+        // Base de cálculo do lembrete de prêmio não resgatado.
+        ...(completo && cartao.status !== 'completo'
+          ? { completoEm: admin.firestore.FieldValue.serverTimestamp(), lembretesEnviados: 0 }
+          : {}),
       });
 
       // Espelha o progresso no doc do cliente (usado pelo CRM do lojista)
@@ -695,7 +760,7 @@ exports.carimbar = onCall(
         excedente,
         selosPendentes: pendentesTotal,
         cliente: cartao.clienteId,
-        premio: loja.layout?.premio || '1 Mimo Especial',
+        premio: loja.layout?.premio || '1 Recompensa Especial',
       };
     });
   }
@@ -710,8 +775,39 @@ exports.atualizarPasse = onDocumentWritten(
     const antes = event.data?.before?.data();
     const depois = event.data?.after?.data();
 
-    if (!depois || antes?.selos === depois.selos) return;
+    if (!depois) return;
 
+    // Apple Wallet: push vazio via APNs; o iPhone então baixa o .pkpass atualizado
+    // em /appleWallet/v1/passes/... Isolado em try próprio para que uma falha
+    // da Apple nunca impeça a atualização da Google Wallet (e vice-versa).
+    const mudouParaApple =
+      antes?.selos !== depois.selos || antes?.status !== depois.status || antes?.ciclo !== depois.ciclo;
+    // Aviso novo (selo, aniversário, lembrete) gravado em cartoes/{id}.aviso.
+    const avisoMudou = !!depois.aviso?.id && antes?.aviso?.id !== depois.aviso.id;
+    if (antes && (mudouParaApple || avisoMudou)) {
+      try {
+        await apple.notificarDispositivosApple([event.params.cartaoId]);
+      } catch (err) {
+        console.warn('Apple Wallet: falha no push:', err.message);
+      }
+    }
+
+    const objectId = depois.wallet?.objectId;
+    if (!objectId) return;
+
+    // Google: atualiza o passe primeiro e só depois notifica, para o cliente
+    // abrir a notificação e já ver o saldo novo.
+    if (antes?.selos !== depois.selos) {
+      await atualizarObjetoGoogle(event.params.cartaoId, depois, objectId);
+    }
+    if (avisoMudou) {
+      await notificacoes.enviarAvisoGoogle(api, objectId, depois.aviso);
+    }
+  }
+);
+
+/** PATCH do objeto da Google Wallet com saldo, cartela e campos atuais. */
+async function atualizarObjetoGoogle(cartaoId, depois, objectId) {
     try {
       const db = admin.firestore();
       const lojaDoc = await db.doc(`lojistas/${depois.lojaId}`).get();
@@ -721,24 +817,40 @@ exports.atualizarPasse = onDocumentWritten(
       const meta = depois.meta || 10;
       const selos = depois.selos || 0;
       const faltam = Math.max(0, meta - selos);
-      const premio = loja.layout?.premio || loja.regras?.premio || '1 Mimo Especial';
+      const premio = loja.layout?.premio || loja.regras?.premio || '1 Recompensa Especial';
       const validadeDias = loja.layout?.validadeDias || loja.regras?.validadeDias || 30;
       const instrucaoResgate = loja.layout?.instrucaoResgate || 'Apresente o QR Code no balcão a cada compra para creditar o selo.';
 
+      // Este gatilho roda a cada selo e faz PATCH no objeto da carteira. Se os
+      // campos fossem fixos aqui, o primeiro carimbo desfaria a personalização
+      // aplicada na criação do passe — era o que acontecia.
+      const campos = montarCamposDoPasse(loja, {
+        nome: clienteNome,
+        selos,
+        meta,
+        recompensa: premio,
+        tagline: loja.design?.brand?.tagline || loja.layout?.nomePrograma || '',
+        unidade: depois.unidade,
+        status: depois.status === 'completo' ? 'Completo' : 'Ativo',
+        ciclo: depois.ciclo || 1,
+        validadeDias,
+      });
+
       const textModulesData = [
+        ...paraTextModules(campos),
         {
           id: 'regras_resgate',
           header: 'INSTRUÇÕES NO BALCÃO',
-          body: `${instrucaoResgate} Validade de ${validadeDias} dias após completar os 10 selos.`,
+          body: `${instrucaoResgate} Validade de ${validadeDias} dias após completar os ${meta} selos.`,
         }
       ];
 
-      await api('PATCH', `/loyaltyObject/${depois.wallet?.objectId}`, {
+      await api('PATCH', `/loyaltyObject/${objectId}`, {
         loyaltyPoints: {
           localizedLabel: {
             defaultValue: {
               language: 'pt-BR',
-              value: 'Cartão Mimo'
+              value: 'Cartão Boomii'
             }
           },
           balance: { string: `${selos} / ${meta} SELOS` },
@@ -753,35 +865,16 @@ exports.atualizarPasse = onDocumentWritten(
         },
         textModulesData,
         infoModuleData: {
-          labelValueRows: [
-            {
-              columns: [
-                { label: 'CLIENTE VIP', value: clienteNome },
-                { label: 'CÓDIGO DO CARTÃO', value: depois.clienteId || depois.clienteCelular || 'MIMO-VIP' }
-              ]
-            },
-            {
-              columns: [
-                { label: 'STATUS', value: depois.status === 'completo' ? 'Completo' : 'Ativo' },
-                { label: 'PRÊMIO', value: premio }
-              ]
-            }
-          ]
+          labelValueRows: paraLabelValueRows(campos),
         },
-        messages: [{
-          header: depois.status === 'completo' ? 'Mimo liberado!' : 'Novo selo adicionado',
-          body: depois.status === 'completo'
-            ? `Parabéns! Seu prêmio está liberado: ${premio}`
-            : `Você acumulou ${selos} de ${meta} selos no ${loja.layout?.nomePrograma || loja.nome}!`,
-          id: `msg-${selos}-${Date.now()}`,
-        }],
+        // Sem `messages` aqui: a mensagem com notificação vai por addMessage
+        // (notificacoes.js), conforme o que o lojista configurou.
       });
-      console.log(`Passe do cartão ${event.params.cartaoId} atualizado no Google Wallet com dados completos.`);
+      console.log(`Passe do cartão ${cartaoId} atualizado no Google Wallet com dados completos.`);
     } catch (err) {
       console.warn('Erro ao atualizar objeto no Google Wallet:', err.message);
     }
-  }
-);
+}
 
 /**
  * 4.6 Resgate de prêmio e reciclagem de ciclo
@@ -837,7 +930,7 @@ exports.resgatar = onCall(
         }
       }
 
-      const premio = loja.layout?.premio || '1 Mimo Especial';
+      const premio = loja.layout?.premio || '1 Recompensa Especial';
 
       // 1. Grava histórico em /resgates
       const resgateRef = db.collection('resgates').doc();
@@ -867,6 +960,9 @@ exports.resgatar = onCall(
         status: selosIniciais >= metaCartao ? 'completo' : 'ativo',
         selosPendentes: pendentesRestantes,
         ultimoResgateEm: admin.firestore.FieldValue.serverTimestamp(),
+        // Zera a contagem do lembrete para o próximo prêmio.
+        completoEm: admin.firestore.FieldValue.delete(),
+        lembretesEnviados: 0,
       });
 
       // Espelha o progresso no doc do cliente (usado pelo CRM do lojista)
@@ -906,17 +1002,21 @@ exports.resgatar = onCall(
 );
 
 /**
- * 8. Campanha automática de aniversário: conceder 1 selo bônus no dia
- * Executa todos os dias às 08:00 (America/Sao_Paulo)
+ * 8. Campanha automática de aniversário: selo(s) bônus + notificação na carteira.
+ * Executa todos os dias às 08:00 (America/Sao_Paulo). Quantidade de selos e
+ * texto vêm de lojistas/{id}.notificacoes.aniversario (ver notificacoes.js).
  */
 exports.campanhaAniversario = onSchedule(
   { schedule: '0 8 * * *', timeZone: 'America/Sao_Paulo' },
   async () => {
     const db = admin.firestore();
-    const hoje = new Date();
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-    const dia = String(hoje.getDate()).padStart(2, '0');
-    const hojeMMDD = `${mes}-${dia}`;
+    // Data de hoje no fuso de São Paulo (o servidor roda em UTC).
+    const partes = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const pegar = (t) => partes.find((p) => p.type === t).value;
+    const ano = Number(pegar('year'));
+    const hojeMMDD = `${pegar('month')}-${pegar('day')}`;
 
     console.log(`Executando campanha de aniversário para aniversariantes de ${hojeMMDD}...`);
 
@@ -924,48 +1024,430 @@ exports.campanhaAniversario = onSchedule(
 
     for (const lojaDoc of lojistasSnap.docs) {
       const lojaId = lojaDoc.id;
+      const loja = lojaDoc.data() || {};
+      const cfg = notificacoes.resolverConfig(loja).aniversario;
+      if (!cfg.ativo) continue;
+      const bonusCfg = Math.max(0, Math.min(5, Number(cfg.bonus) || 0));
+
       const clientesAnivSnap = await lojaDoc.ref.collection('clientes')
         .where('aniversarioMMDD', '==', hojeMMDD)
         .get();
 
       for (const cDoc of clientesAnivSnap.docs) {
-        const clienteId = cDoc.id;
-        const cartaoSnap = await db.collection('cartoes')
+        const cartoesSnap = await db.collection('cartoes')
           .where('lojaId', '==', lojaId)
-          .where('clienteId', '==', clienteId)
-          .where('status', '==', 'ativo')
-          .limit(1)
+          .where('clienteId', '==', cDoc.id)
           .get();
+        const cartaoDoc = cartoesSnap.docs.find((d) => ['ativo', 'completo'].includes(d.get('status')));
+        if (!cartaoDoc) continue;
 
-        if (!cartaoSnap.empty) {
-          const cartaoRef = cartaoSnap.docs[0].ref;
-          const cartao = cartaoSnap.docs[0].data();
-          const novosSelos = Math.min((cartao.meta || 10), (cartao.selos || 0) + 1);
+        const cartao = cartaoDoc.data();
+        // Idempotente: se a função rodar duas vezes no dia, não dá bônus em dobro.
+        if (cartao.aniversarioAno === ano) continue;
 
-          await cartaoRef.update({
-            selos: novosSelos,
-            status: novosSelos >= (cartao.meta || 10) ? 'completo' : 'ativo',
-          });
+        const meta = cartao.meta || 10;
+        const selosAntes = cartao.selos || 0;
+        // Cartela já completa: só a mensagem (o bônus não caberia).
+        const bonus = cartao.status === 'ativo' ? Math.min(bonusCfg, meta - selosAntes) : 0;
+        const novosSelos = selosAntes + bonus;
+        const completou = novosSelos >= meta && cartao.status !== 'completo';
 
-          await cartaoRef.collection('eventos').add({
-            tipo: 'bonus_aniversario',
-            selosAntes: cartao.selos || 0,
-            selosDepois: novosSelos,
-            em: admin.firestore.FieldValue.serverTimestamp(),
-          });
+        const aviso = notificacoes.avisoDeAniversario(loja, {
+          selos: novosSelos,
+          meta,
+          bonus,
+          nome: cartao.clienteNome || cDoc.get('nome'),
+        });
+
+        await cartaoDoc.ref.update({
+          selos: novosSelos,
+          status: novosSelos >= meta ? 'completo' : 'ativo',
+          aniversarioAno: ano,
+          ...(aviso ? { aviso } : {}),
+          ...(completou
+            ? { completoEm: admin.firestore.FieldValue.serverTimestamp(), lembretesEnviados: 0 }
+            : {}),
+        });
+
+        // Espelha o progresso no doc do cliente (usado pelo CRM do lojista),
+        // como carimbar e resgatar já fazem.
+        if (bonus > 0) {
+          await cDoc.ref.set(
+            { stamps: novosSelos, status: novosSelos >= meta ? 'completo' : 'ativo' },
+            { merge: true }
+          );
         }
+
+        await cartaoDoc.ref.collection('eventos').add({
+          tipo: 'bonus_aniversario',
+          selosAntes,
+          selosDepois: novosSelos,
+          em: admin.firestore.FieldValue.serverTimestamp(),
+        });
       }
     }
   }
 );
 
-// Auxiliar para converter Base64 em Stream para o PureImage
-function bufferToStream(buffer) {
-  const stream = new Readable();
-  stream.push(buffer);
-  stream.push(null);
-  return stream;
+/**
+ * 9. Lembrete de prêmio não resgatado.
+ * Todos os dias às 10:00 (America/Sao_Paulo): para cada cartela completa,
+ * avisa a cada `dias` dias desde que completou, até `maxEnvios` vezes.
+ */
+exports.lembretePremio = onSchedule(
+  { schedule: '0 10 * * *', timeZone: 'America/Sao_Paulo' },
+  async () => {
+    const db = admin.firestore();
+    const DIA = 24 * 60 * 60 * 1000;
+    const agora = Date.now();
+    const lojas = new Map();
+    let enviados = 0;
+
+    const completos = await db.collection('cartoes').where('status', '==', 'completo').get();
+
+    for (const doc of completos.docs) {
+      const cartao = doc.data();
+      if (!lojas.has(cartao.lojaId)) {
+        const s = await db.doc(`lojistas/${cartao.lojaId}`).get();
+        lojas.set(cartao.lojaId, s.exists ? s.data() : null);
+      }
+      const loja = lojas.get(cartao.lojaId);
+      if (!loja || loja.ativo === false) continue;
+
+      const cfg = notificacoes.resolverConfig(loja).lembrete;
+      if (!cfg.ativo) continue;
+      const intervalo = Math.max(1, Number(cfg.dias) || 3);
+      const maxEnvios = Math.max(1, Number(cfg.maxEnvios) || 1);
+      const jaEnviados = cartao.lembretesEnviados || 0;
+      if (jaEnviados >= maxEnvios) continue;
+
+      // Cartões completados antes desta versão não têm completoEm.
+      const base = cartao.completoEm?.toMillis?.() || cartao.ultimoSeloEm?.toMillis?.();
+      if (!base) continue;
+      const dias = Math.floor((agora - base) / DIA);
+      if (dias < intervalo * (jaEnviados + 1)) continue;
+
+      const aviso = notificacoes.avisoDeLembrete(loja, {
+        selos: cartao.selos,
+        meta: cartao.meta,
+        dias,
+        nome: cartao.clienteNome,
+      });
+      if (!aviso) continue;
+
+      await doc.ref.update({
+        aviso,
+        lembretesEnviados: jaEnviados + 1,
+        ultimoLembreteEm: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      enviados++;
+    }
+    console.log(`Lembrete de prêmio: ${enviados} aviso(s) gerado(s) de ${completos.size} cartela(s) completa(s).`);
+  }
+);
+
+/**
+ * Normaliza a data de aniversário aceita na edição.
+ *
+ * Aceita "AAAA-MM-DD" ou "MM-DD" (o cadastro grava nos dois formatos, conforme
+ * o cliente tenha informado o ano). Devolve `undefined` se for inválida e
+ * `{ aniversario: null, mmdd: null }` se vier vazia — limpar é permitido.
+ */
+function normalizarAniversario(valor) {
+  const v = String(valor || '').trim();
+  if (!v) return { aniversario: null, mmdd: null };
+  let ano = null;
+  let mes;
+  let dia;
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    ano = Number(m[1]); mes = Number(m[2]); dia = Number(m[3]);
+  } else if ((m = v.match(/^(\d{2})-(\d{2})$/))) {
+    mes = Number(m[1]); dia = Number(m[2]);
+  } else {
+    return undefined;
+  }
+  // Ano bissexto como referência para aceitar 29/02 quando o ano é omitido.
+  const ref = new Date(Date.UTC(ano || 2000, mes - 1, dia));
+  if (ref.getUTCMonth() !== mes - 1 || ref.getUTCDate() !== dia) return undefined;
+  if (ano && (ano < 1900 || ref.getTime() > Date.now())) return undefined;
+  const mmdd = `${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  return { aniversario: ano ? `${ano}-${mmdd}` : mmdd, mmdd };
 }
+
+/**
+ * Edição dos dados de um cliente pelo painel do lojista.
+ *
+ * O celular não é editável: ele é o ID do cliente e compõe o ID do cartão e o
+ * ID do objeto na Google Wallet — trocá-lo exigiria migrar tudo isso.
+ *
+ * Nome, e-mail e aniversário ficam copiados em cada cartão (`clienteNome`...),
+ * e o nome aparece no passe. Por isso a edição atualiza o cliente, todos os
+ * cartões dele nesta loja e, por fim, as carteiras: a Google por API e os
+ * iPhones por push, para baixarem o passe com o nome novo.
+ */
+/**
+ * Loja sobre a qual o pedido pode agir. Lojista mexe só na própria loja (o
+ * lojaId vem do token, não do pedido); admin pode agir em qualquer uma.
+ */
+function lojaDoPedido(claims, lojaIdParam, acao) {
+  let lojaId;
+  if (claims.role === 'admin') {
+    lojaId = lojaIdParam;
+  } else if (claims.role === 'lojista') {
+    lojaId = claims.lojaId;
+    if (lojaIdParam && lojaIdParam !== lojaId) {
+      throw new HttpsError('permission-denied', `Você só pode ${acao} clientes da sua loja.`);
+    }
+  } else {
+    throw new HttpsError('unauthenticated', `Entre como lojista para ${acao} clientes.`);
+  }
+  return lojaId;
+}
+
+exports.editarCliente = onCall(
+  { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
+  async (req) => {
+    const claims = req.auth?.token || {};
+    const { lojaId: lojaIdParam, clienteId, nome, email, aniversario } = req.data || {};
+
+    const lojaId = lojaDoPedido(claims, lojaIdParam, 'editar');
+    if (!lojaId || !clienteId) {
+      throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
+    }
+
+    const nomeLimpo = String(nome || '').trim().replace(/\s+/g, ' ');
+    if (nomeLimpo.length < 2 || nomeLimpo.length > 80) {
+      throw new HttpsError('invalid-argument', 'Informe o nome do cliente (de 2 a 80 caracteres).');
+    }
+    const emailLimpo = String(email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailLimpo)) {
+      throw new HttpsError('invalid-argument', 'E-mail inválido.');
+    }
+    const aniv = normalizarAniversario(aniversario);
+    if (aniv === undefined) {
+      throw new HttpsError('invalid-argument', 'Data de aniversário inválida.');
+    }
+
+    const db = admin.firestore();
+    const lojaSnap = await db.doc(`lojistas/${lojaId}`).get();
+    if (!lojaSnap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
+    const loja = lojaSnap.data() || {};
+
+    const clienteRef = db.doc(`lojistas/${lojaId}/clientes/${clienteId}`);
+    const clienteSnap = await clienteRef.get();
+    if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado nesta loja.');
+    const antes = clienteSnap.data() || {};
+
+    const cartoesSnap = await db.collection('cartoes')
+      .where('lojaId', '==', lojaId)
+      .where('clienteId', '==', clienteId)
+      .get();
+
+    // Cliente e cópias nos cartões no mesmo lote: ou tudo muda, ou nada muda.
+    const lote = db.batch();
+    lote.update(clienteRef, {
+      nome: nomeLimpo,
+      email: emailLimpo,
+      aniversario: aniv.aniversario,
+      aniversarioMMDD: aniv.mmdd,
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      editadoPor: req.auth.uid,
+    });
+    cartoesSnap.docs.forEach((d) => {
+      lote.update(d.ref, {
+        clienteNome: nomeLimpo,
+        clienteEmail: emailLimpo,
+        clienteAniversario: aniv.aniversario,
+        atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    lote.set(db.collection('auditoria').doc(), {
+      tipo: 'cliente_editado',
+      lojaId,
+      clienteId,
+      por: req.auth.uid,
+      papel: claims.role,
+      antes: { nome: antes.nome || null, email: antes.email || null, aniversario: antes.aniversario || null },
+      depois: { nome: nomeLimpo, email: emailLimpo, aniversario: aniv.aniversario },
+      em: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await lote.commit();
+
+    // Carteiras: tolerante a falha. Os dados já foram gravados; se a Google ou
+    // a Apple não responderem agora, o passe se corrige no próximo carimbo.
+    const vigentes = cartoesSnap.docs.filter((d) => ['ativo', 'completo'].includes(d.get('status')));
+    let carteirasAtualizadas = true;
+    for (const d of vigentes) {
+      try {
+        await gerarSaveUrl(await d.ref.get(), loja, null);
+      } catch (err) {
+        carteirasAtualizadas = false;
+        console.warn('editarCliente: falha ao atualizar a Google Wallet', d.id, err.message);
+      }
+    }
+    try {
+      await apple.notificarDispositivosApple(vigentes.map((d) => d.id));
+    } catch (err) {
+      carteirasAtualizadas = false;
+      console.warn('editarCliente: falha no push da Apple', err.message);
+    }
+
+    return {
+      sucesso: true,
+      cliente: {
+        nome: nomeLimpo,
+        email: emailLimpo,
+        aniversario: aniv.aniversario,
+        aniversarioMMDD: aniv.mmdd,
+      },
+      carteirasAtualizadas,
+    };
+  }
+);
+
+/**
+ * Exclui um cliente da loja.
+ *
+ * O cadastro some e os cartões perdem os dados pessoais, mas ficam como
+ * "excluido" em vez de apagados: o iPhone ainda precisa baixar o passe uma
+ * última vez para vê-lo como inválido, e o documento é o que responde a esse
+ * download. O cartão na Google Wallet passa a INACTIVE (a API não apaga
+ * objetos). Se o cliente se cadastrar de novo, criarCartao recria o cartão
+ * do zero no mesmo ID.
+ */
+exports.excluirCliente = onCall(
+  { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
+  async (req) => {
+    const claims = req.auth?.token || {};
+    const { lojaId: lojaIdParam, clienteId } = req.data || {};
+
+    const lojaId = lojaDoPedido(claims, lojaIdParam, 'excluir');
+    if (!lojaId || !clienteId) {
+      throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
+    }
+
+    const db = admin.firestore();
+    const clienteRef = db.doc(`lojistas/${lojaId}/clientes/${clienteId}`);
+    const clienteSnap = await clienteRef.get();
+    if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado nesta loja.');
+
+    const cartoesSnap = await db.collection('cartoes')
+      .where('lojaId', '==', lojaId)
+      .where('clienteId', '==', clienteId)
+      .get();
+
+    const agora = admin.firestore.FieldValue.serverTimestamp();
+    const apagar = admin.firestore.FieldValue.delete();
+    const lote = db.batch();
+    lote.delete(clienteRef);
+    cartoesSnap.docs.forEach((d) => {
+      // A mudança de status dispara atualizarPasse, que avisa o iPhone.
+      lote.update(d.ref, {
+        status: 'excluido',
+        statusAnterior: d.get('status') || null,
+        clienteNome: apagar,
+        clienteEmail: apagar,
+        clienteAniversario: apagar,
+        clienteCelular: apagar,
+        totpSecret: apagar,
+        aviso: apagar,
+        excluidoEm: agora,
+        atualizadoEm: agora,
+      });
+    });
+    // Sem dados pessoais na auditoria: a exclusão precisa valer de verdade.
+    lote.set(db.collection('auditoria').doc(), {
+      tipo: 'cliente_excluido',
+      lojaId,
+      clienteId,
+      cartoes: cartoesSnap.size,
+      por: req.auth.uid,
+      papel: claims.role,
+      em: agora,
+    });
+    await lote.commit();
+
+    let carteirasAtualizadas = true;
+    for (const d of cartoesSnap.docs) {
+      const objectId = d.get('wallet')?.objectId;
+      if (!objectId || d.get('status') === 'excluido') continue;
+      try {
+        await api('PATCH', `/loyaltyObject/${objectId}`, { state: 'INACTIVE' });
+      } catch (err) {
+        // 404: o cliente nunca salvou o passe na Google Wallet.
+        if (err.response?.status !== 404) {
+          carteirasAtualizadas = false;
+          console.warn('excluirCliente: falha ao desativar na Google Wallet', d.id, err.message);
+        }
+      }
+    }
+
+    return { sucesso: true, carteirasAtualizadas };
+  }
+);
+
+/**
+ * 10. Disparo manual de notificação para a carteira de um cliente (botões do painel).
+ */
+exports.dispararNotificacaoManual = onCall(
+  { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
+  async (req) => {
+    const { lojaId: lojaIdParam, clienteId, tipo } = req.data || {};
+    if (!clienteId || !tipo) {
+      throw new HttpsError('invalid-argument', 'clienteId e tipo obrigatórios.');
+    }
+    const claims = req.auth?.token || {};
+    const db = admin.firestore();
+    const lojaId = claims.lojaId || lojaIdParam;
+    if (!lojaId) throw new HttpsError('permission-denied', 'lojaId não identificado.');
+
+    const lojaSnap = await db.doc(`lojistas/${lojaId}`).get();
+    if (!lojaSnap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
+    const loja = lojaSnap.data() || {};
+
+    // Busca o cartão ativo ou completo do cliente
+    const cartoesSnap = await db.collection('cartoes')
+      .where('lojaId', '==', lojaId)
+      .where('clienteId', '==', clienteId)
+      .get();
+
+    const cartaoDoc = cartoesSnap.docs.find((d) => ['ativo', 'completo'].includes(d.get('status')));
+    if (!cartaoDoc) {
+      throw new HttpsError('not-found', 'Nenhum cartão ativo ou completo encontrado para este cliente.');
+    }
+
+    const cartao = cartaoDoc.data();
+    let aviso = null;
+    if (tipo === 'aniversario') {
+      aviso = notificacoes.avisoDeAniversario(loja, {
+        selos: cartao.selos || 0,
+        meta: cartao.meta || 10,
+        bonus: 0,
+        nome: cartao.clienteNome,
+      });
+    } else if (tipo === 'recompensa') {
+      const agora = Date.now();
+      const base = cartao.completoEm?.toMillis?.() || cartao.ultimoSeloEm?.toMillis?.() || agora;
+      const dias = Math.max(0, Math.floor((agora - base) / (24 * 60 * 60 * 1000)));
+      aviso = notificacoes.avisoDeLembrete(loja, {
+        selos: cartao.selos || 0,
+        meta: cartao.meta || 10,
+        dias,
+        nome: cartao.clienteNome,
+      });
+    }
+
+    if (!aviso) {
+      throw new HttpsError('failed-precondition', 'Não foi possível gerar a notificação (canal desativado nas configurações da loja).');
+    }
+
+    await cartaoDoc.ref.update({ aviso });
+
+    return { sucesso: true, aviso };
+  }
+);
+
 
 // Endpoint Dinâmico 1: Retorna o Logotipo da Loja
 //
@@ -998,38 +1480,15 @@ exports.getLogo = onRequest({ cors: true, memory: '512MiB' }, async (req, res) =
 
     // Sem upload: usa a URL externa cadastrada, se houver
     const urlExterna = design?.brand?.logoUrl || layout.logoUrl;
-    if (urlExterna && String(urlExterna).startsWith('http') && !String(urlExterna).includes('mimo-logo.jpg')) {
+    if (urlExterna && String(urlExterna).startsWith('http') && !String(urlExterna).includes('boomii-logo.jpg')) {
       return res.redirect(urlExterna);
     }
   } catch (err) {
     console.error(err);
   }
   // Fallback genérico se falhar
-  res.redirect('https://mimo-fidelidade.web.app/logos/loja.jpg');
+  res.redirect('https://boomii-fidelidade.web.app/logos/loja.jpg');
 });
-
-async function loadBase64Image(dataUrl) {
-  if (!dataUrl || !dataUrl.includes('base64,')) return null;
-  try {
-    const PImage = require('pureimage');
-    const isPng = dataUrl.includes('image/png');
-    const isJpeg = dataUrl.includes('image/jpeg') || dataUrl.includes('image/jpg');
-    if (!isPng && !isJpeg) return null;
-    
-    const b64Data = dataUrl.split(',')[1];
-    const buffer = Buffer.from(b64Data, 'base64');
-    const stream = bufferToStream(buffer);
-    
-    if (isPng) {
-      return await PImage.decodePNGFromStream(stream);
-    } else {
-      return await PImage.decodeJPEGFromStream(stream);
-    }
-  } catch (err) {
-    console.warn('Erro ao carregar imagem base64:', err.message);
-    return null;
-  }
-}
 
 // Endpoint Dinâmico 2: Gera o Banner (Cartela de Selos) na hora usando PureImage
 // Totalmente personalizável por loja e por cliente: cor de fundo, cor de destaque,
@@ -1046,144 +1505,9 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
     const db = admin.firestore();
     const docSnap = await db.doc(`lojistas/${lojaId}`).get();
     if (!docSnap.exists) return res.status(404).send('Not found');
-    const lojaData = docSnap.data() || {};
-    const layout = lojaData.layout || {};
-    const design = lojaData.design || null;
 
-    // O JSON do Estúdio (`design`) é a fonte de verdade; `layout` é o espelho
-    // legado, mantido para lojas que ainda não passaram pelo Estúdio.
-    const bgColor = design?.colors?.background || layout.corFundo || '#141416';
-    const accentColor = design?.colors?.accent || layout.accentColor || '#FFC82C';
-    const stampInk = design?.colors?.stampInk || layout.stampInk || bgColor;
-    const stampIconKey = String(design?.stamps?.iconKey || layout.stampIcon || 'cookie').toLowerCase();
-    const stampShape = String(design?.stamps?.shape || layout.stampShape || 'circle').toLowerCase();
-    const stampFill = String(design?.stamps?.fill || layout.stampFill || 'icon').toLowerCase();
-    const showNumbersOnEmpty =
-      design?.stamps?.showNumbersOnEmpty ?? layout.showNumbersOnEmpty ?? false;
-    const rewardColor = design?.reward?.color || layout.rewardColor || accentColor;
-    const rewardIconKey = String(design?.reward?.iconKey || layout.rewardIcon || 'gift').toLowerCase();
-
-    const meta = Math.max(
-      1,
-      Math.min(
-        30,
-        parseInt(req.query.meta || String(design?.stamps?.total || lojaData.regras?.meta || 10), 10) || 10
-      )
-    );
-
-    const img = PImage.make(1032, 336);
-    const ctx = img.getContext('2d');
-
-    // Fundo principal na cor da loja (o mesmo hexBackgroundColor da loyaltyClass)
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, 1032, 336);
-
-    // Painel interno na cor de destaque, como a cartela do cartão de referência.
-    // Só preenchimento: roundRect + stroke no pureimage fecha o traço errado e
-    // deixa uma diagonal atravessando o painel.
-    const margin = 20;
-    if (typeof ctx.roundRect === 'function') {
-      ctx.fillStyle = accentColor;
-      ctx.beginPath();
-      ctx.roundRect(margin, margin, 1032 - margin * 2, 336 - margin * 2, 28);
-      ctx.fill();
-    } else {
-      ctx.fillStyle = accentColor;
-      ctx.fillRect(margin, margin, 1032 - margin * 2, 336 - margin * 2);
-    }
-
-    // Grade adapta-se à meta de selos configurada pelo lojista (não é fixa em 10)
-    const colsConfig = Number(design?.stamps?.columns || layout.stampColumns || 5);
-    const cols = Math.min(Math.max(3, colsConfig), meta);
-    const rows = Math.ceil(meta / cols);
-    // Raio limitado pelo espaço disponível, para caber qualquer combinação de
-    // meta × colunas sem os selos vazarem para fora do painel.
-    const padding = margin + 16;
-    const maxByWidth = (1032 - padding * 2) / (cols * 2.35);
-    const maxByHeight = (336 - padding * 2) / (rows * 2.35);
-    const radius = Math.max(18, Math.min(52, maxByWidth, maxByHeight));
-
-    const innerLeft = padding + radius;
-    const innerRight = 1032 - padding - radius;
-    const innerTop = padding + radius;
-    const innerBottom = 336 - padding - radius;
-
-    const spacingX = cols > 1 ? (innerRight - innerLeft) / (cols - 1) : 0;
-    const spacingY = rows > 1 ? (innerBottom - innerTop) / (rows - 1) : 0;
-    const originX = cols > 1 ? innerLeft : 1032 / 2;
-    const originY = rows > 1 ? innerTop : 336 / 2;
-
-    let stampBitmap = null;
-    let rewardBitmap = null;
-
-    const b64Stamp =
-      design?.stamps?.imageDataUrl || layout.stampImageBase64 || layout.stampImage;
-    if (b64Stamp && b64Stamp.startsWith('data:image')) {
-      stampBitmap = await loadBase64Image(b64Stamp);
-    }
-    const b64Reward =
-      design?.reward?.imageDataUrl || layout.rewardStampImageBase64 || layout.rewardStampImage;
-    if (b64Reward && b64Reward.startsWith('data:image')) {
-      rewardBitmap = await loadBase64Image(b64Reward);
-    }
-
-    // O conteúdo do selo é desenhado sobre a cor de destaque, então a tinta
-    // precisa contrastar com ela (e não com o fundo do cartão).
-    const inkColor = stampInk || walletIcons.contrastIconColor(accentColor);
-
-    for (let i = 0; i < meta; i++) {
-      const rowIdx = Math.floor(i / cols);
-      const colIdx = i % cols;
-      const cx = originX + colIdx * spacingX;
-      const cy = originY + rowIdx * spacingY;
-
-      const position = i + 1;
-      const isFilled = i < selos;
-      const isLast = i === meta - 1;
-
-      if (isLast) {
-        // Selo do prêmio: imagem própria do lojista, senão o ícone escolhido.
-        walletIcons.drawMedallionBase(ctx, cx, cy, radius, rewardColor, !isFilled, stampShape);
-        const prevAlpha = ctx.globalAlpha;
-        if (!isFilled) ctx.globalAlpha = 0.4;
-
-        if (rewardBitmap) {
-          ctx.save();
-          walletIcons.shapePath(ctx, stampShape, cx, cy, radius - 8);
-          ctx.clip();
-          ctx.drawImage(rewardBitmap, cx - (radius - 8), cy - (radius - 8), (radius - 8) * 2, (radius - 8) * 2);
-          ctx.restore();
-        } else if (rewardIconKey === 'gift') {
-          walletIcons.drawGiftIcon(ctx, cx, cy, radius, inkColor);
-        } else {
-          walletIcons.drawStampGlyph(ctx, rewardIconKey, cx, cy, radius * 0.62, inkColor);
-        }
-        ctx.globalAlpha = prevAlpha;
-
-        walletIcons.drawStarBadge(ctx, cx + radius * 0.72, cy - radius * 0.72, 19, rewardColor, !isFilled);
-      } else if (isFilled) {
-        // Selo conquistado: fundo na cor do cartão (contraste com o painel) e,
-        // dentro dele, o número, o ícone ou a imagem — conforme o Estúdio.
-        walletIcons.drawMedallionBase(ctx, cx, cy, radius, bgColor, false, stampShape);
-
-        if (stampFill === 'image' && stampBitmap) {
-          ctx.save();
-          walletIcons.shapePath(ctx, stampShape, cx, cy, radius - 10);
-          ctx.clip();
-          ctx.drawImage(stampBitmap, cx - (radius - 10), cy - (radius - 10), (radius - 10) * 2, (radius - 10) * 2);
-          ctx.restore();
-        } else if (stampFill === 'number') {
-          walletIcons.drawNumber(ctx, position, cx, cy, radius * 0.66, accentColor);
-        } else {
-          walletIcons.drawStampGlyph(ctx, stampIconKey, cx, cy, radius * 0.62, accentColor);
-        }
-      } else {
-        walletIcons.drawEmptySlot(ctx, cx, cy, radius, inkColor, stampShape, accentColor);
-        if (showNumbersOnEmpty) {
-          walletIcons.drawNumber(ctx, position, cx, cy, radius * 0.58, walletIcons.withAlpha(inkColor, 0.55));
-        }
-      }
-    }
+    // Desenho compartilhado com o strip.png da Apple Wallet (ver banner.js).
+    const img = await renderStampBanner(docSnap.data() || {}, selos, req.query.meta, 1032, 336);
 
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=31536000'); // Imutável: selos/meta/versão fazem parte da própria URL
@@ -1194,3 +1518,41 @@ exports.generateBanner = onRequest({ cors: true, memory: '512MiB' }, async (req,
     res.status(500).send('Internal error');
   }
 });
+
+/**
+ * Prévia do passe Apple para o Estúdio de Marca.
+ *
+ * Devolve a faixa (cartela) e o logo renderizados pelo MESMO código que monta o
+ * .pkpass real, a partir do design ainda não publicado. É o que garante que o
+ * lojista veja na prévia exatamente os pixels que vão para o iPhone — antes a
+ * prévia era desenhada no navegador e divergia do cartão real.
+ */
+exports.previaPasseApple = onCall(
+  { region: 'southamerica-east1', memory: '512MiB' },
+  async (req) => {
+    const design = req.data?.design;
+    if (!design || typeof design !== 'object') {
+      throw new HttpsError('invalid-argument', 'Design ausente.');
+    }
+    const selos = Math.max(0, Math.min(30, parseInt(req.data?.selos, 10) || 0));
+
+    const { renderFaixaApple, renderLogoApple, pngDataUrl } = require('./passe-apple-imagens');
+    const loja = { design };
+    const iconePadrao = await apple.carregarIconePadrao();
+    const [faixa, logo] = await Promise.all([
+      renderFaixaApple(loja, selos, design?.stamps?.total, 2),
+      renderLogoApple(loja, 2, iconePadrao),
+    ]);
+    return { faixa: await pngDataUrl(faixa), logo: await pngDataUrl(logo) };
+  }
+);
+
+/**
+ * Apple Wallet (iOS): download do .pkpass e Web Service de registro/atualização
+ * chamado pelo próprio iPhone. URL base = webServiceURL do pass.json.
+ * Ver apple-wallet.js para o protocolo completo.
+ */
+exports.appleWallet = onRequest(
+  { memory: '512MiB', timeoutSeconds: 60, cors: true },
+  apple.handler
+);

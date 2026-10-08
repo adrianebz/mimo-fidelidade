@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import assert from 'node:assert';
 import { db, ConflictError, GoneError } from '../db/firestore.js';
 import { createOrganization } from '../modules/organizations.js';
@@ -10,7 +12,7 @@ import { getContrastRatio, validateContrast } from '../modules/design.js';
 
 async function runAllTests() {
   console.log('====================================================');
-  console.log('🧪 INICIANDO SUÍTE DE TESTES OBRIGATÓRIOS DO MIMO');
+  console.log('🧪 INICIANDO SUÍTE DE TESTES OBRIGATÓRIOS DO BOOMII');
   console.log('====================================================\n');
 
   let passed = 0;
@@ -202,7 +204,7 @@ async function runAllTests() {
       accentColor: '#FFC82C',
       rewardLabel: 'Cookie',
       stampIcon: 'coin',
-      showMimoBranding: true
+      showBoomiiBranding: true
     });
     assert.strictEqual(check1.isValid, true);
     assert(check1.contrast > 15);
@@ -215,7 +217,7 @@ async function runAllTests() {
       accentColor: '#FFC82C',
       rewardLabel: 'Cookie',
       stampIcon: 'coin',
-      showMimoBranding: true
+      showBoomiiBranding: true
     });
     assert.strictEqual(check2.isValid, false);
     assert(check2.contrast < 4.5);

@@ -12,7 +12,7 @@ import {
   provisionarAcessoLojista,
   LojistaFirestoreData,
   MASTER_ADMIN_EMAIL
-} from '../../services/mimoWalletService.js';
+} from '../../services/boomiiWalletService.js';
 import { SiteNavTab } from '../../components/SiteHeader.js';
 
 interface AdminContasProps {
@@ -136,8 +136,8 @@ export const AdminContas: React.FC<AdminContasProps> = ({
         layout: {
           corFundo: formData.corFundo || '#121215',
           corTexto: '#FFFFFF',
-          heroUrl: 'https://mimo-fidelidade.web.app/mimo-hero.jpg',
-          logoUrl: 'https://mimo-fidelidade.web.app/mimo-logo.jpg',
+          heroUrl: 'https://boomii-fidelidade.web.app/boomii-hero.jpg',
+          logoUrl: 'https://boomii-fidelidade.web.app/boomii-logo.jpg',
           nomePrograma: 'Programa de Fidelidade Digital',
           premio: formData.premio || 'Recompensa Exclusiva (10º Selo)',
           validadeDias: 30,
@@ -220,7 +220,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
   };
 
   const handleImpersonate = (slug: string) => {
-    localStorage.setItem('mimo_active_lojista', slug);
+    localStorage.setItem('boomii_active_lojista', slug);
     onSelectStore(slug);
     onNavigate('painel');
   };
@@ -267,7 +267,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-foreground tracking-tight text-base">
-                  MIMO Fidelidade
+                  BOOMII Fidelidade
                 </span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-primary/20 text-primary border border-primary/30">
                   Master Superadmin
@@ -412,7 +412,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
           <button
             type="button"
             onClick={handleOpenCreate}
-            className="btn-mimo py-2.5 px-5 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xl shrink-0"
+            className="btn-boomii py-2.5 px-5 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xl shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Cadastrar Novo Lojista</span>
@@ -455,7 +455,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
               <button
                 type="button"
                 onClick={handleOpenCreate}
-                className="btn-mimo py-2 px-4 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                className="btn-boomii py-2 px-4 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Cadastrar Lojista Agora</span>
@@ -738,7 +738,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="btn-mimo py-2 px-5 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-lg"
+                  className="btn-boomii py-2 px-5 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-lg"
                 >
                   {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                   <span>{modalMode === 'create' ? 'Salvar no Firestore' : 'Atualizar Dados'}</span>

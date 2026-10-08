@@ -135,7 +135,7 @@ export const ColorsSection: React.FC<SectionProps> = ({ design, patch }) => (
 export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }) => (
   <Section step={3} title="Selos da Cartela" icon={<Grid3x3 className="h-4 w-4" />} badge="Mecânica">
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Quantidade total de selos" hint="É a meta do programa: ao completar, o cliente resgata o mimo.">
+      <Field label="Quantidade total de selos" hint="É a meta do programa: ao completar, o cliente resgata a recompensa.">
         <Segmented
           value={design.stamps.total}
           onChange={(total) =>
@@ -263,7 +263,7 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
 
 // ── 4. Recompensa ───────────────────────────────────────────────────────────
 export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }) => (
-  <Section step={4} title="Recompensa (último selo)" icon={<Gift className="h-4 w-4" />} badge="Mimo">
+  <Section step={4} title="Recompensa (último selo)" icon={<Gift className="h-4 w-4" />} badge="Boomii">
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Título da recompensa">
         <TextInput
@@ -288,7 +288,7 @@ export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }
       <TextInput
         value={design.reward.description}
         onChange={(e) => patch({ reward: { ...design.reward, description: e.target.value } })}
-        placeholder="Apresente o QR Code e retire seu mimo."
+        placeholder="Apresente o QR Code e retire sua recompensa."
       />
     </Field>
 
@@ -322,8 +322,9 @@ export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }
 // ── 5. Informações ──────────────────────────────────────────────────────────
 const FIELD_META: Array<{ key: keyof InfoFieldsConfig; label: string; description: string }> = [
   { key: 'cliente', label: 'Cliente', description: 'Nome de quem possui o cartão' },
-  { key: 'faltam', label: 'Faltam', description: 'Quantos selos restam para o mimo' },
-  { key: 'mimo', label: 'Mimo', description: 'Qual é a recompensa' },
+  { key: 'recompensa', label: 'Recompensa', description: 'Qual é a recompensa' },
+  { key: 'faltam', label: 'Faltam', description: 'Quantos selos restam para a recompensa' },
+  { key: 'ciclo', label: 'Ciclo', description: 'Qual cartela o cliente está completando (1º, 2º…)' },
   { key: 'unidade', label: 'Unidade', description: 'Loja/filial onde o cartão vale' },
   { key: 'programa', label: 'Programa', description: 'Nome do programa de fidelidade' },
   { key: 'status', label: 'Status', description: 'Ativo / Completo' },
@@ -398,7 +399,7 @@ export const QrSection: React.FC<SectionProps> = ({ design, patch }) => (
             value={design.qr.format}
             onChange={(format) => patch({ qr: { ...design.qr, format } })}
             options={[
-              { value: 'mimo', label: 'Código do balcão' },
+              { value: 'boomii', label: 'Código do balcão' },
               { value: 'url', label: 'Link da cartela' },
             ]}
           />
@@ -416,7 +417,7 @@ export const QrSection: React.FC<SectionProps> = ({ design, patch }) => (
           checked={design.qr.showPassCode}
           onChange={(showPassCode) => patch({ qr: { ...design.qr, showPassCode } })}
           label="Mostrar código do passe"
-          description="Ex: MIMO-PASS-MA01, para busca manual no balcão"
+          description="Ex: BOOMII-PASS-MA01, para busca manual no balcão"
         />
       </>
     )}

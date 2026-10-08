@@ -84,8 +84,13 @@ export function generateGoogleWalletSaveUrl(
   baseUrl: string
 ): string {
   const loyaltyObject = buildGoogleLoyaltyObject(card, org, design, baseUrl);
-  const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'mimo-wallet@mimo-fidelidade.iam.gserviceaccount.com';
-  const secretKey = process.env.JWT_SECRET || 'mimo-jwt-super-secret-key-fidelidade-2026';
+  const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 'mimo-wallet-issuer@mimo-2d6eb.iam.gserviceaccount.com';
+  // Sem fallback embutido de propósito: um segredo conhecido no código anula a
+  // rotação da chave e deixa qualquer um forjar o token. Melhor falhar alto.
+  const secretKey = process.env.JWT_SECRET;
+  if (!secretKey) {
+    throw new Error('JWT_SECRET não definido. Configure-o no .env antes de gerar links da carteira.');
+  }
 
   const claims = {
     iss: serviceAccount,

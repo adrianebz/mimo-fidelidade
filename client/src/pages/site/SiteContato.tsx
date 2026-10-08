@@ -42,7 +42,7 @@ export const SiteContato: React.FC = () => {
           em até um dia útil.
         </p>
         <div className="mt-8 space-y-2 text-sm text-muted-foreground">
-          <p>contato@mimo.com.br</p>
+          <p>contato@boomii.com.br</p>
           <p>Atendimento de segunda a sexta, 9h às 18h</p>
         </div>
       </div>
@@ -80,7 +80,7 @@ export const SiteContato: React.FC = () => {
                 placeholder="Ex.: a cada 10 cafés, o 11º é grátis"
               />
             </div>
-            <button type="submit" className="btn-mimo w-full cursor-pointer">
+            <button type="submit" className="btn-boomii w-full cursor-pointer">
               Enviar
             </button>
           </>

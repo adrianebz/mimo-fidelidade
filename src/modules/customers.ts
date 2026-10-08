@@ -139,7 +139,7 @@ export async function enrollCustomer(token: string, input: EnrollInput, baseUrl:
       accentColor: '#FFC82C',
       rewardLabel: store.rewardLabel || 'Cookie Grátis',
       stampIcon: 'coin',
-      showMimoBranding: true
+      showBoomiiBranding: true
     },
     status: 'published',
     createdAt: new Date().toISOString()

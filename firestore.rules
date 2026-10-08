@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Regras da plataforma MIMO Fidelidade.
+    // Regras da plataforma BOOMII Fidelidade.
     //
     // Antes, TODA coleção era "allow read, write: if true" — qualquer pessoa
     // na internet podia ler e reescrever selos, dados de clientes (PII/LGPD),

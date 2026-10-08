@@ -1,4 +1,4 @@
-// Mock Data Service — Provides demo data for the MIMO platform
+// Mock Data Service — Provides demo data for the BOOMII platform
 // Eliminates API call errors when running on Firebase Hosting without backend
 
 export interface CardData {
@@ -388,7 +388,7 @@ export async function generateInvite(): Promise<InviteData> {
   const token = `inv_demo_${Date.now().toString(36)}`;
   return {
     token,
-    qr_payload: `https://mimo-fidelidade.web.app/entrar/${token}`,
+    qr_payload: `https://boomii-fidelidade.web.app/entrar/${token}`,
     expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
   };
 }

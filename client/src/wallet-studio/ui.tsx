@@ -192,7 +192,7 @@ export const ImageUpload: React.FC<{
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="btn-mimo-ghost !py-2 !px-3.5 !text-xs"
+          className="btn-boomii-ghost !py-2 !px-3.5 !text-xs"
         >
           {label}
         </button>

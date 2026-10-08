@@ -11,18 +11,18 @@
     "localizedLabel": {
       "defaultValue": {
         "language": "pt-BR",
-        "value": "Cartão Mimo"
+        "value": "Cartão Boomii"
       }
     }
   },
   "barcode": {
     "type": "QR_CODE",
-    "value": "MIMO:casa-nuvem_5511999998888_1:882104",
-    "alternateText": "MIMO-PASS-8821"
+    "value": "BOOMII:casa-nuvem_5511999998888_1:882104",
+    "alternateText": "BOOMII-PASS-8821"
   },
   "heroImage": {
     "sourceUri": {
-      "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+      "uri": "https://boomii-fidelidade.web.app/boomii-hero.jpg"
     },
     "contentDescription": {
       "defaultValue": {
@@ -53,8 +53,8 @@
       "body": "(11) 99999-8888"
     },
     {
-      "id": "premio_mimo",
-      "header": "MIMO APÓS 10 COMPRAS",
+      "id": "premio_recompensa",
+      "header": "RECOMPENSA APÓS 10 COMPRAS",
       "body": "1 Café Filtrado Especial + Pão de Queijo Canastra"
     },
     {
@@ -122,12 +122,12 @@
     "uris": [
       {
         "kind": "walletobjects#uri",
-        "uri": "https://mimo-fidelidade.web.app",
-        "description": "Acessar Portal do Clube MIMO"
+        "uri": "https://boomii-fidelidade.web.app",
+        "description": "Acessar Portal do Clube BOOMII"
       },
       {
         "kind": "walletobjects#uri",
-        "uri": "https://mimo-fidelidade.web.app/c/casa-nuvem",
+        "uri": "https://boomii-fidelidade.web.app/c/casa-nuvem",
         "description": "Ver Minha Cartela & Regulamento"
       }
     ]

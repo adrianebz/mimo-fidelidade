@@ -1,3 +1,6 @@
+// Carrega o .env antes de qualquer módulo que leia process.env na importação.
+import 'dotenv/config';
+
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -86,7 +89,7 @@ app.setErrorHandler((error: any, request, reply) => {
 
 // Health check
 app.get('/api/health', async () => {
-  return { status: 'healthy', platform: 'MIMO — Fidelidade Digital', version: '2.0.0' };
+  return { status: 'healthy', platform: 'BOOMII — Loyalty Club', version: '2.0.0' };
 });
 
 // 1. Invites
@@ -295,7 +298,7 @@ app.get('/api/admin/export/:orgId', async (request, reply) => {
 
   return reply
     .type('text/csv')
-    .header('Content-Disposition', `attachment; filename="mimo-${orgId}-clientes.csv"`)
+    .header('Content-Disposition', `attachment; filename="boomii-${orgId}-clientes.csv"`)
     .send(csv);
 });
 
@@ -347,7 +350,7 @@ async function start() {
     });
 
     await app.listen({ port: PORT, host: HOST });
-    console.log(`\n🚀 MIMO Fidelidade Digital rodando em ${BASE_URL}`);
+    console.log(`\n🚀 BOOMII Loyalty Club rodando em ${BASE_URL}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

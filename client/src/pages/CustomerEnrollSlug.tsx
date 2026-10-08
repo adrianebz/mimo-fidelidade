@@ -18,13 +18,14 @@ import {
   Smartphone
 } from 'lucide-react';
 import { GoogleWalletBadge } from '../components/GoogleWalletBadge.js';
+import { WalletBadges } from '../components/WalletBadges.js';
 import {
   obterDadosLojista,
   cadastrarClienteECartao,
   gerarCodigoTotpAtual,
   formatarCelularDisplay,
   EnrolledCardResult
-} from '../services/mimoWalletService.js';
+} from '../services/boomiiWalletService.js';
 import { SeedMerchantData } from '../data/seedData.js';
 
 interface CustomerEnrollSlugProps {
@@ -107,7 +108,7 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
       const code = await gerarCodigoTotpAtual(enrolledResult.totpSecret);
       setTotpCode(code);
 
-      const qrContent = `MIMO:${enrolledResult.cartaoId}:${code}`;
+      const qrContent = `BOOMII:${enrolledResult.cartaoId}:${code}`;
       try {
         const url = await QRCode.toDataURL(qrContent, {
           width: 260,
@@ -283,20 +284,21 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
               </p>
             </div>
 
-            {/* BOTÃO OFICIAL ADICIONAR À GOOGLE WALLET */}
+            {/* BOTÕES OFICIAIS ADICIONAR À CARTEIRA (APPLE WALLET & GOOGLE WALLET) */}
             <div className="p-5 rounded-2xl bg-[#1C1C22] border border-zinc-700/60 space-y-3">
               <span className="text-[11px] uppercase font-bold text-zinc-400 tracking-wider block">
-                Google Wallet (Disponível para Android & iOS)
+                Disponível para iPhone (Apple Wallet) & Android (Google Wallet)
               </span>
 
               <div className="flex justify-center my-1">
-                <GoogleWalletBadge
-                  href={enrolledResult.saveUrl}
+                <WalletBadges
+                  applePassUrl={enrolledResult.applePassUrl}
+                  googleSaveUrl={enrolledResult.saveUrl}
                 />
               </div>
 
               <p className="text-[11px] text-zinc-400 leading-snug">
-                Clique no botão acima para salvar diretamente no app Google Carteira do seu smartphone.
+                Toque no botão correspondente ao seu aparelho para salvar diretamente na sua carteira nativa.
               </p>
             </div>
 
@@ -504,7 +506,7 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
             </div>
 
             <p className="text-[11px] text-zinc-500">
-              O cartão vive na sua Google Wallet. Não é necessário lembrar senhas ou baixar novos aplicativos.
+              O cartão fica salvo na Carteira nativa do seu celular. Não é necessário lembrar senhas ou baixar novos aplicativos.
             </p>
           </div>
         ) : (

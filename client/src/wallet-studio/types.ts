@@ -1,5 +1,5 @@
 /**
- * Contrato único do design do cartão de fidelidade MIMO.
+ * Contrato único do design do cartão de fidelidade BOOMII.
  *
  * Este JSON é a fonte de verdade: alimenta a prévia em tempo real no estúdio,
  * é salvo no Firestore e é o mesmo objeto usado para gerar o passe real na
@@ -104,18 +104,43 @@ export interface InfoField {
 export interface InfoFieldsConfig {
   cliente: InfoField;
   faltam: InfoField;
-  mimo: InfoField;
+  recompensa: InfoField;
   unidade: InfoField;
   programa: InfoField;
   status: InfoField;
   validade: InfoField;
+  /**
+   * Número do ciclo atual (1º cartão, 2º cartão...). Desligado por padrão:
+   * faz sentido para quem trata os ciclos como conquista, e vira ruído para
+   * quem só quer a cartela corrente.
+   */
+  ciclo: InfoField;
 }
+
+/**
+ * Ordem canônica dos campos no passe.
+ *
+ * Vale para a prévia do estúdio **e** para as Cloud Functions que montam o
+ * passe real — as duas precisam produzir a mesma sequência, senão o lojista
+ * configura uma coisa e o cliente recebe outra. Ver `montarCamposDoPasse` em
+ * `functions/pass-fields.js`, que implementa esta mesma ordem.
+ */
+export const ORDEM_CAMPOS: Array<keyof InfoFieldsConfig> = [
+  'cliente',
+  'recompensa',
+  'faltam',
+  'ciclo',
+  'unidade',
+  'programa',
+  'status',
+  'validade',
+];
 
 export interface QrConfig {
   enabled: boolean;
-  /** 'mimo' gera "MIMO:{cartaoId}:{totp}"; 'url' aponta para a cartela web. */
-  format: 'mimo' | 'url';
-  /** Exibe o código alfanumérico abaixo do QR (ex.: MIMO-PASS-MA01). */
+  /** 'boomii' gera "BOOMII:{cartaoId}:{totp}"; 'url' aponta para a cartela web. */
+  format: 'boomii' | 'url';
+  /** Exibe o código alfanumérico abaixo do QR (ex.: BOOMII-PASS-MA01). */
   showPassCode: boolean;
   label: string;
 }
@@ -141,6 +166,8 @@ export interface CardHolderData {
   passCode: string;
   unidade?: string;
   status?: string;
+  /** Ciclo corrente (1 = primeira cartela). Exibido só se `fields.ciclo` estiver ligado. */
+  ciclo?: number;
 }
 
 export interface PalettePreset {

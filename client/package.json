@@ -1,5 +1,5 @@
 {
-  "name": "mimo-client",
+  "name": "boomii-client",
   "private": true,
   "version": "2.0.0",
   "type": "module",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.3",
     "canvas-confetti": "^1.9.3",
     "firebase": "^12.18.0",
     "html5-qrcode": "^2.3.8",

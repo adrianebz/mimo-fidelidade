@@ -16,7 +16,7 @@ export const StoreDashboard: React.FC = () => {
     accentColor: '#FFC82C',
     rewardLabel: 'Cookie Grátis',
     stampIcon: 'coin' as const,
-    showMimoBranding: true
+    showBoomiiBranding: true
   });
 
   const [previewStamps, setPreviewStamps] = useState(8);
@@ -63,7 +63,7 @@ export const StoreDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 md:mb-8">
         <div>
-          <span className="text-xs font-bold tracking-widest text-mimo-yellow uppercase block mb-1">
+          <span className="text-xs font-bold tracking-widest text-boomii-yellow uppercase block mb-1">
             PAINEL DO LOJISTA • GESTÃO E IDENTIDADE
           </span>
           <h1 className="text-2xl md:text-4xl font-black text-white tracking-tight">
@@ -80,7 +80,7 @@ export const StoreDashboard: React.FC = () => {
             type="button"
             onClick={() => setActiveTab('builder')}
             className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              activeTab === 'builder' ? 'bg-mimo-yellow text-black shadow-md' : 'text-white/70 hover:text-white'
+              activeTab === 'builder' ? 'bg-boomii-yellow text-black shadow-md' : 'text-white/70 hover:text-white'
             }`}
           >
             <Palette className="w-4 h-4" />
@@ -90,7 +90,7 @@ export const StoreDashboard: React.FC = () => {
             type="button"
             onClick={() => setActiveTab('metrics')}
             className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              activeTab === 'metrics' ? 'bg-mimo-yellow text-black shadow-md' : 'text-white/70 hover:text-white'
+              activeTab === 'metrics' ? 'bg-boomii-yellow text-black shadow-md' : 'text-white/70 hover:text-white'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -110,7 +110,7 @@ export const StoreDashboard: React.FC = () => {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8 stagger-children">
         <div className="glass-panel p-4 md:p-5">
-          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-mimo-gray block">
+          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-boomii-gray block">
             CLIENTES
           </span>
           <div className="text-2xl md:text-3xl font-black text-white mt-1">
@@ -120,33 +120,33 @@ export const StoreDashboard: React.FC = () => {
         </div>
 
         <div className="glass-panel p-4 md:p-5">
-          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-mimo-gray block">
+          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-boomii-gray block">
             SELOS
           </span>
-          <div className="text-2xl md:text-3xl font-black text-mimo-yellow mt-1">
+          <div className="text-2xl md:text-3xl font-black text-boomii-yellow mt-1">
             {stats?.counters?.stampsAllTime ?? 21}
           </div>
           <span className="text-[10px] text-white/40 mt-1 block hidden md:inline">Carimbos acumulados</span>
         </div>
 
         <div className="glass-panel p-4 md:p-5">
-          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-mimo-gray block">
+          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-boomii-gray block">
             RECOMPENSAS
           </span>
-          <div className="text-2xl md:text-3xl font-black text-mimo-green mt-1">
+          <div className="text-2xl md:text-3xl font-black text-boomii-green mt-1">
             {stats?.counters?.redemptionsAllTime ?? 1}
           </div>
           <span className="text-[10px] text-white/40 mt-1 block hidden md:inline">Ciclos concluídos</span>
         </div>
 
         <div className="glass-panel p-4 md:p-5">
-          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-mimo-gray block">
+          <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-boomii-gray block">
             RESGATE
           </span>
           <div className="text-2xl md:text-3xl font-black text-white mt-1">
             80%
           </div>
-          <span className="text-[10px] text-mimo-green mt-1 block font-semibold hidden md:inline">Alto engajamento</span>
+          <span className="text-[10px] text-boomii-green mt-1 block font-semibold hidden md:inline">Alto engajamento</span>
         </div>
       </div>
 
@@ -158,17 +158,17 @@ export const StoreDashboard: React.FC = () => {
             <div className="glass-panel p-5 md:p-6 space-y-5 animate-fade-in-up">
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h2 className="text-base md:text-lg font-black text-white flex items-center gap-2">
-                  <Palette className="w-5 h-5 text-mimo-yellow" />
+                  <Palette className="w-5 h-5 text-boomii-yellow" />
                   Identidade do Cartão
                 </h2>
-                <span className="text-xs font-mono text-mimo-yellow bg-mimo-yellow/10 px-2.5 py-1 rounded-full">
+                <span className="text-xs font-mono text-boomii-yellow bg-boomii-yellow/10 px-2.5 py-1 rounded-full">
                   v{stats?.stores?.[0]?.activeDesignVersion || 1}
                 </span>
               </div>
 
               {publishSuccess && (
-                <div className="bg-mimo-green/20 border border-mimo-green/50 p-3.5 rounded-xl text-white text-xs font-semibold flex items-center gap-2 animate-scale-in">
-                  <CheckCircle2 className="w-4 h-4 text-mimo-green shrink-0" />
+                <div className="bg-boomii-green/20 border border-boomii-green/50 p-3.5 rounded-xl text-white text-xs font-semibold flex items-center gap-2 animate-scale-in">
+                  <CheckCircle2 className="w-4 h-4 text-boomii-green shrink-0" />
                   {publishSuccess}
                 </div>
               )}
@@ -183,7 +183,7 @@ export const StoreDashboard: React.FC = () => {
                   value={designConfig.rewardLabel}
                   onChange={(e) => setDesignConfig({ ...designConfig, rewardLabel: e.target.value })}
                   placeholder="Ex: Cookie Grátis"
-                  className="input-mimo font-semibold"
+                  className="input-boomii font-semibold"
                 />
               </div>
 
@@ -218,14 +218,14 @@ export const StoreDashboard: React.FC = () => {
               <div
                 className={`p-3.5 md:p-4 rounded-2xl border flex items-start gap-3 ${
                   isContrastValid
-                    ? 'bg-mimo-green/10 border-mimo-green/30 text-white'
-                    : 'bg-mimo-red/15 border-mimo-red/40 text-white'
+                    ? 'bg-boomii-green/10 border-boomii-green/30 text-white'
+                    : 'bg-boomii-red/15 border-boomii-red/40 text-white'
                 }`}
               >
                 {isContrastValid ? (
-                  <CheckCircle2 className="w-5 h-5 text-mimo-green shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-5 h-5 text-boomii-green shrink-0 mt-0.5" />
                 ) : (
-                  <AlertTriangle className="w-5 h-5 text-mimo-red shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-5 h-5 text-boomii-red shrink-0 mt-0.5" />
                 )}
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -234,7 +234,7 @@ export const StoreDashboard: React.FC = () => {
                     </span>
                     <span
                       className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                        isContrastValid ? 'bg-mimo-green text-black' : 'bg-mimo-red text-white'
+                        isContrastValid ? 'bg-boomii-green text-black' : 'bg-boomii-red text-white'
                       }`}
                     >
                       {isContrastValid ? '✓ APROVADO' : '✗ REPROVADO'}
@@ -252,10 +252,10 @@ export const StoreDashboard: React.FC = () => {
               <div className="bg-black/30 border border-white/10 rounded-2xl p-3.5 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold uppercase tracking-wider text-white/70 flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-mimo-yellow" />
+                    <Sliders className="w-3.5 h-3.5 text-boomii-yellow" />
                     Simular Saldo
                   </span>
-                  <span className="font-mono font-bold text-mimo-yellow">{previewStamps}/10</span>
+                  <span className="font-mono font-bold text-boomii-yellow">{previewStamps}/10</span>
                 </div>
                 <input
                   type="range"
@@ -263,7 +263,7 @@ export const StoreDashboard: React.FC = () => {
                   max="10"
                   value={previewStamps}
                   onChange={(e) => setPreviewStamps(parseInt(e.target.value, 10))}
-                  className="w-full accent-mimo-yellow cursor-pointer"
+                  className="w-full accent-boomii-yellow cursor-pointer"
                 />
               </div>
 
@@ -272,7 +272,7 @@ export const StoreDashboard: React.FC = () => {
                 type="button"
                 onClick={handlePublish}
                 disabled={!isContrastValid || isPublishing}
-                className="btn-mimo-primary w-full py-3.5 md:py-4 text-sm md:text-base font-bold shadow-xl"
+                className="btn-boomii-primary w-full py-3.5 md:py-4 text-sm md:text-base font-bold shadow-xl"
               >
                 <Sparkles className="w-5 h-5" />
                 {isPublishing ? 'Publicando...' : 'Publicar Design Oficial'}
@@ -283,7 +283,7 @@ export const StoreDashboard: React.FC = () => {
           {/* Pass Preview */}
           <div className="lg:col-span-6 flex flex-col items-center">
             <div className="text-center mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-mimo-gray">
+              <span className="text-xs font-bold uppercase tracking-wider text-boomii-gray">
                 SIMULAÇÃO EM TEMPO REAL
               </span>
             </div>
@@ -306,7 +306,7 @@ export const StoreDashboard: React.FC = () => {
         <div className="glass-panel p-4 md:p-6 space-y-5 md:space-y-6 animate-fade-in-up">
           <div className="flex items-center justify-between">
             <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-mimo-yellow" />
+              <Users className="w-5 h-5 text-boomii-yellow" />
               Base de Clientes
             </h2>
             <span className="text-xs text-white/50">
@@ -333,8 +333,8 @@ export const StoreDashboard: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <span className={`font-bold px-2 py-0.5 rounded-full text-xs ${
                         card.stamps >= 10
-                          ? 'bg-mimo-green/15 text-mimo-green'
-                          : 'bg-mimo-yellow/15 text-mimo-yellow'
+                          ? 'bg-boomii-green/15 text-boomii-green'
+                          : 'bg-boomii-yellow/15 text-boomii-yellow'
                       }`}>
                         {card.stamps}/10
                       </span>

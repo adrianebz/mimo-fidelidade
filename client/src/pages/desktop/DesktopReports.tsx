@@ -22,7 +22,7 @@ export const DesktopReports: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `relatorio-mimo-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `relatorio-boomii-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
 
@@ -43,7 +43,7 @@ export const DesktopReports: React.FC = () => {
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="input-mimo-dark text-xs py-2 w-44"
+            className="input-boomii-dark text-xs py-2 w-44"
           >
             <option value="30d">Últimos 30 dias</option>
             <option value="90d">Último trimestre</option>
@@ -53,7 +53,7 @@ export const DesktopReports: React.FC = () => {
           <button
             type="button"
             onClick={handleExport}
-            className="btn-mimo-outline text-xs font-bold py-2 px-3.5 flex items-center gap-2"
+            className="btn-boomii-outline text-xs font-bold py-2 px-3.5 flex items-center gap-2"
           >
             <Download className="w-3.5 h-3.5 text-[#FFC82C]" />
             <span>Exportar CSV</span>
@@ -63,7 +63,7 @@ export const DesktopReports: React.FC = () => {
 
       {/* 4 Metric Cards (Matching Screen 5) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <span className="text-xs font-bold text-white/50 uppercase tracking-wider block">
             Selos Totais
           </span>
@@ -76,7 +76,7 @@ export const DesktopReports: React.FC = () => {
           </div>
         </div>
 
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <span className="text-xs font-bold text-white/50 uppercase tracking-wider block">
             Clientes Frequentes
           </span>
@@ -89,7 +89,7 @@ export const DesktopReports: React.FC = () => {
           </div>
         </div>
 
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <span className="text-xs font-bold text-white/50 uppercase tracking-wider block">
             Retorno em 14 dias
           </span>
@@ -102,7 +102,7 @@ export const DesktopReports: React.FC = () => {
           </div>
         </div>
 
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <span className="text-xs font-bold text-white/50 uppercase tracking-wider block">
             Total Recompensas
           </span>
@@ -117,13 +117,13 @@ export const DesktopReports: React.FC = () => {
       </div>
 
       {/* Analytics Breakdown Table (Matching Screen 5) */}
-      <div className="mimo-card overflow-hidden">
+      <div className="boomii-card overflow-hidden">
         <div className="p-4 border-b border-white/8 flex items-center justify-between">
           <h3 className="text-sm font-bold text-white">
             Histórico Mensal de Desempenho
           </h3>
           <span className="text-xs text-white/50">
-            Valores atualizados em tempo real pelo motor MIMO
+            Valores atualizados em tempo real pelo motor BOOMII
           </span>
         </div>
 

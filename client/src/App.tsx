@@ -9,18 +9,38 @@ import { SiteLogin } from './pages/site/SiteLogin.js';
 import { SitePainel } from './pages/site/SitePainel.js';
 import { AdminContas } from './pages/site/AdminContas.js';
 import { CustomerEnrollSlug } from './pages/CustomerEnrollSlug.js';
+import { CAMINHO_AREA_LOJISTA, CAMINHO_AREA_LOJISTA_LEGADO } from './siteConfig.js';
+
+/**
+ * `/areadolojista` é a rota oficial. `/arealojista`, `/login` e `/entrar`
+ * continuam aceitos: são caminhos anteriores, possivelmente já em favoritos.
+ *
+ * A ordem importa — `arealojista` não é substring de `areadolojista`, então
+ * os dois precisam ser testados separadamente.
+ */
+function ehRotaDoLojista(path: string): boolean {
+  const semBarra = (p: string) => p.replace('/', '');
+  return (
+    path.includes(semBarra(CAMINHO_AREA_LOJISTA)) ||
+    path.includes(semBarra(CAMINHO_AREA_LOJISTA_LEGADO)) ||
+    path.includes('login') ||
+    path.includes('entrar')
+  );
+}
 
 export const App: React.FC = () => {
-  // Modo aplicativo nativo (APK): abre direto no Painel do Lojista e desativa páginas de marketing
+  // Modo aplicativo nativo (APK / iOS): abre direto no Painel do Lojista e desativa páginas de marketing
   const isAppMode = typeof window !== 'undefined' && (
     new URLSearchParams(window.location.search).get('mode') === 'app' ||
+    navigator.userAgent.includes('BoomiiScannerApp') ||
     navigator.userAgent.includes('MimoScannerApp') ||
-    (window as any).isNativeApp === true
+    (window as any).isNativeApp === true ||
+    Boolean((window as any).Capacitor?.isNativePlatform?.())
   );
 
   const [selectedStoreSlug, setSelectedStoreSlug] = useState<string>(() => {
     if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem('mimo_active_lojista') || 'nox-dessert-club';
+      return localStorage.getItem('boomii_active_lojista') || 'nox-dessert-club';
     }
     return 'nox-dessert-club';
   });
@@ -29,13 +49,13 @@ export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const [siteTab, setSiteTab] = useState<SiteNavTab>(() => {
     const path = window.location.pathname;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('mimo_admin_session') === 'true' && (path.includes('admin') || path.includes('login'))) {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('boomii_admin_session') === 'true' && (path.includes('admin') || ehRotaDoLojista(path))) {
       return 'admin';
     }
     if (isAppMode) return 'painel';
     if (path.includes('admin')) return 'admin';
     if (path.includes('painel')) return 'painel';
-    if (path.includes('login') || path.includes('entrar')) return 'login';
+    if (ehRotaDoLojista(path)) return 'login';
     if (path.includes('como-funciona')) return 'como-funciona';
     if (path.includes('precos') || path.includes('planos')) return 'precos';
     if (path.includes('contato')) return 'contato';
@@ -54,7 +74,7 @@ export const App: React.FC = () => {
       'como-funciona': isAppMode ? '/painel' : '/como-funciona',
       'precos': isAppMode ? '/painel' : '/precos',
       'contato': isAppMode ? '/painel' : '/contato',
-      'login': '/login',
+      'login': CAMINHO_AREA_LOJISTA,
       'painel': '/painel',
       'admin': '/admin',
     };
@@ -74,7 +94,7 @@ export const App: React.FC = () => {
       setCurrentPath(path);
       if (path.includes('admin')) setSiteTab('admin');
       else if (path.includes('painel')) setSiteTab('painel');
-      else if (path.includes('login') || path.includes('entrar')) setSiteTab('login');
+      else if (ehRotaDoLojista(path)) setSiteTab('login');
       else if (path.includes('como-funciona')) setSiteTab('como-funciona');
       else if (path.includes('precos') || path.includes('planos')) setSiteTab('precos');
       else if (path.includes('contato')) setSiteTab('contato');
@@ -104,10 +124,10 @@ export const App: React.FC = () => {
         onNavigate={(tab) => setSiteTab(tab)}
         onSelectStore={(slug) => {
           setSelectedStoreSlug(slug);
-          localStorage.setItem('mimo_active_lojista', slug);
+          localStorage.setItem('boomii_active_lojista', slug);
         }}
         onLogout={() => {
-          localStorage.removeItem('mimo_admin_session');
+          localStorage.removeItem('boomii_admin_session');
           setSiteTab('login');
         }}
       />
@@ -122,7 +142,7 @@ export const App: React.FC = () => {
           onNavigate={(tab) => setSiteTab(tab)}
           onSelectStore={(slug) => {
             setSelectedStoreSlug(slug);
-            localStorage.setItem('mimo_active_lojista', slug);
+            localStorage.setItem('boomii_active_lojista', slug);
           }}
         />
       );
@@ -133,6 +153,23 @@ export const App: React.FC = () => {
   // Se estiver no painel do lojista, renderiza o layout específico do painel sem o cabeçalho público
   if (siteTab === 'painel') {
     return <SitePainel onNavigate={(tab) => setSiteTab(tab)} />;
+  }
+
+  // A área do lojista é uma tela isolada: sem cabeçalho nem rodapé do site.
+  // Quem chega aqui veio para entrar no sistema, não para navegar pelo site —
+  // e a navegação institucional só daria saída acidental no meio do login.
+  if (siteTab === 'login') {
+    return (
+      <div className="flex min-h-screen flex-col bg-background text-foreground font-sans antialiased selection:bg-primary selection:text-primary-foreground">
+        <SiteLogin
+          onNavigate={(tab) => setSiteTab(tab)}
+          onSelectStore={(slug) => {
+            setSelectedStoreSlug(slug);
+            localStorage.setItem('boomii_active_lojista', slug);
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -159,16 +196,6 @@ export const App: React.FC = () => {
 
         {siteTab === 'contato' && (
           <SiteContato />
-        )}
-
-        {siteTab === 'login' && (
-          <SiteLogin
-            onNavigate={(tab) => setSiteTab(tab)}
-            onSelectStore={(slug) => {
-              setSelectedStoreSlug(slug);
-              localStorage.setItem('mimo_active_lojista', slug);
-            }}
-          />
         )}
       </main>
 

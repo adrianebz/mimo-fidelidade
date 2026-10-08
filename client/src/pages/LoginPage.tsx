@@ -10,7 +10,7 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('leonam.ataide@gmail.com');
-  const [password, setPassword] = useState('mimo2026');
+  const [password, setPassword] = useState('boomii2026');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +33,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const handleQuickDemo = (demoEmail: string) => {
     setEmail(demoEmail);
-    setPassword('mimo2026');
-    onLogin(demoEmail, 'mimo2026');
+    setPassword('boomii2026');
+    onLogin(demoEmail, 'boomii2026');
   };
 
   return (
@@ -83,7 +83,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert('Para a demonstração, utilize qualquer senha com 4 dígitos (ex: mimo2026).')}
+                  onClick={() => alert('Para a demonstração, utilize qualquer senha com 4 dígitos (ex: boomii2026).')}
                   className="text-[11px] text-teal-600 hover:underline"
                 >
                   Esqueceu a senha?
@@ -120,7 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         </div>
 
         <div className="text-center text-[11px] text-slate-400">
-          MIMO — Fidelidade em Carteira Digital • v2.0
+          BOOMII — Fidelidade em Carteira Digital • v2.0
         </div>
       </div>
     </div>

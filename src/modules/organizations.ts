@@ -65,7 +65,7 @@ export function createOrganization(input: {
       accentColor: '#FFC82C',
       rewardLabel: store.rewardLabel,
       stampIcon: 'coin',
-      showMimoBranding: true
+      showBoomiiBranding: true
     },
     status: 'published',
     publishedAt: now,

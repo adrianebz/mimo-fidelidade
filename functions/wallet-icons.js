@@ -1,5 +1,5 @@
 /**
- * Biblioteca de ícones vetoriais para os selos do cartão MIMO renderizados no
+ * Biblioteca de ícones vetoriais para os selos do cartão BOOMII renderizados no
  * banner real da Google Wallet (Cloud Function `generateBanner`, motor PureImage).
  *
  * PureImage roda em ambiente headless (Cloud Functions) sem fonte de emoji colorida
@@ -419,17 +419,21 @@ function drawGiftIcon(ctx, cx, cy, r, color) {
 }
 
 /** Badge circular com estrela no canto do selo do prêmio (substitui o antigo caractere emoji) */
-function drawStarBadge(ctx, cx, cy, r, accentHex, dim) {
+function drawStarBadge(ctx, cx, cy, r, accentHex, dim, semContorno = false) {
   const prevAlpha = ctx.globalAlpha;
   if (dim) ctx.globalAlpha = 0.45;
 
   circlePath(ctx, cx, cy, r);
   ctx.fillStyle = '#FFFFFF';
   ctx.fill();
-  ctx.strokeStyle = darken(accentHex, 0.7);
-  ctx.lineWidth = Math.max(1.5, r * 0.14);
-  circlePath(ctx, cx, cy, r);
-  ctx.stroke();
+  // O traço escuro em volta é o padrão do banner da Google; a faixa da Apple
+  // pede sem contorno.
+  if (!semContorno) {
+    ctx.strokeStyle = darken(accentHex, 0.7);
+    ctx.lineWidth = Math.max(1.5, r * 0.14);
+    circlePath(ctx, cx, cy, r);
+    ctx.stroke();
+  }
 
   starPath(ctx, cx, cy, r * 0.62, r * 0.26, 5);
   ctx.fillStyle = accentHex;

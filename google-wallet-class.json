@@ -20,7 +20,7 @@
   "rewardsTierLabel": "STATUS",
   "programLogo": {
     "sourceUri": {
-      "uri": "https://mimo-fidelidade.web.app/mimo-logo.jpg"
+      "uri": "https://boomii-fidelidade.web.app/boomii-logo.jpg"
     },
     "contentDescription": {
       "defaultValue": {
@@ -31,12 +31,12 @@
   },
   "heroImage": {
     "sourceUri": {
-      "uri": "https://mimo-fidelidade.web.app/mimo-hero.jpg"
+      "uri": "https://boomii-fidelidade.web.app/boomii-hero.jpg"
     },
     "contentDescription": {
       "defaultValue": {
         "language": "pt-BR",
-        "value": "Cartela de Selos MIMO Fidelidade"
+        "value": "Cartela de Selos BOOMII Fidelidade"
       }
     }
   },

@@ -97,7 +97,7 @@ export const DesktopTeam: React.FC = () => {
         <button
           type="button"
           onClick={() => setShowModal(true)}
-          className="btn-mimo-yellow text-xs font-bold py-2.5 px-4"
+          className="btn-boomii-yellow text-xs font-bold py-2.5 px-4"
         >
           <Plus className="w-4 h-4" />
           <span>Convidar Atendente</span>
@@ -105,7 +105,7 @@ export const DesktopTeam: React.FC = () => {
       </div>
 
       {/* Team Table (Matching Screen 3) */}
-      <div className="mimo-card overflow-hidden">
+      <div className="boomii-card overflow-hidden">
         <div className="p-4 border-b border-white/8 flex items-center justify-between">
           <div className="relative w-72">
             <Search className="w-3.5 h-3.5 text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -114,7 +114,7 @@ export const DesktopTeam: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar atendente por nome ou cargo..."
-              className="input-mimo-dark pl-9 text-xs py-2"
+              className="input-boomii-dark pl-9 text-xs py-2"
             />
           </div>
 
@@ -212,7 +212,7 @@ export const DesktopTeam: React.FC = () => {
                   value={newMember.name}
                   onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
                   placeholder="Ex: Fernanda Lima"
-                  className="input-mimo-dark text-xs"
+                  className="input-boomii-dark text-xs"
                 />
               </div>
 
@@ -226,7 +226,7 @@ export const DesktopTeam: React.FC = () => {
                   value={newMember.email}
                   onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
                   placeholder="atendente@empresa.com"
-                  className="input-mimo-dark text-xs"
+                  className="input-boomii-dark text-xs"
                 />
               </div>
 
@@ -238,7 +238,7 @@ export const DesktopTeam: React.FC = () => {
                   <select
                     value={newMember.role}
                     onChange={(e) => setNewMember({ ...newMember, role: e.target.value })}
-                    className="input-mimo-dark text-xs"
+                    className="input-boomii-dark text-xs"
                   >
                     <option value="Atendente Balcão">Atendente Balcão</option>
                     <option value="Operador Caixa">Operador Caixa</option>
@@ -253,7 +253,7 @@ export const DesktopTeam: React.FC = () => {
                   <select
                     value={newMember.shift}
                     onChange={(e) => setNewMember({ ...newMember, shift: e.target.value })}
-                    className="input-mimo-dark text-xs"
+                    className="input-boomii-dark text-xs"
                   >
                     <option value="Manhã">Manhã</option>
                     <option value="Tarde">Tarde</option>
@@ -267,13 +267,13 @@ export const DesktopTeam: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="btn-mimo-outline text-xs"
+                  className="btn-boomii-outline text-xs"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="btn-mimo-yellow text-xs font-bold"
+                  className="btn-boomii-yellow text-xs font-bold"
                 >
                   Salvar e Convidar
                 </button>

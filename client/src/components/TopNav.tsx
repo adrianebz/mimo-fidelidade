@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MimoLogo } from './MimoLogo.js';
+import { BoomiiLogo } from './BoomiiLogo.js';
 import { 
   QrCode, Store, ShieldCheck, Sparkles, UserPlus, 
   Menu, X, LogOut, ChevronRight
@@ -71,11 +71,11 @@ export const TopNav: React.FC<TopNavProps> = ({
               className="flex items-center text-left hover:opacity-90 transition-opacity shrink-0"
               aria-label="Página inicial"
             >
-              <MimoLogo size="sm" showSubtitle={false} />
+              <BoomiiLogo size="sm" showSubtitle={false} />
             </button>
 
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/8 text-xs">
-              <span className="w-2 h-2 rounded-full bg-mimo-green animate-pulse shrink-0"></span>
+              <span className="w-2 h-2 rounded-full bg-boomii-green animate-pulse shrink-0"></span>
               <span className="text-white/50 shrink-0">Loja:</span>
               <span className="font-semibold text-white truncate max-w-[140px]">{orgName}</span>
             </div>
@@ -92,7 +92,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                   activeTab === item.id
                     ? item.id === 'showcase'
                       ? 'bg-white/15 text-white font-bold shadow-sm'
-                      : 'bg-mimo-yellow text-black shadow-md font-bold'
+                      : 'bg-boomii-yellow text-black shadow-md font-bold'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -142,7 +142,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           <div className="mobile-nav-panel" ref={panelRef}>
             {/* Panel Header */}
             <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <MimoLogo size="sm" showSubtitle={false} />
+              <BoomiiLogo size="sm" showSubtitle={false} />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
@@ -156,7 +156,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             {/* Store Indicator (mobile) */}
             <div className="px-4 py-3 border-b border-white/5">
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-xs">
-                <span className="w-2 h-2 rounded-full bg-mimo-green animate-pulse shrink-0"></span>
+                <span className="w-2 h-2 rounded-full bg-boomii-green animate-pulse shrink-0"></span>
                 <span className="text-white/50">Loja Ativa:</span>
                 <span className="font-bold text-white">{orgName}</span>
               </div>
@@ -174,13 +174,13 @@ export const TopNav: React.FC<TopNavProps> = ({
                   onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-200 mb-0.5 ${
                     activeTab === item.id
-                      ? 'bg-mimo-yellow/15 border border-mimo-yellow/30 text-mimo-yellow'
+                      ? 'bg-boomii-yellow/15 border border-boomii-yellow/30 text-boomii-yellow'
                       : 'text-white/70 hover:bg-white/5 border border-transparent'
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
                     activeTab === item.id
-                      ? 'bg-mimo-yellow/20 text-mimo-yellow'
+                      ? 'bg-boomii-yellow/20 text-boomii-yellow'
                       : 'bg-white/5 text-white/50'
                   }`}>
                     {item.icon}
@@ -190,7 +190,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                     <div className="text-[10px] text-white/40 mt-0.5">{item.description}</div>
                   </div>
                   <ChevronRight className={`w-4 h-4 shrink-0 ${
-                    activeTab === item.id ? 'text-mimo-yellow/60' : 'text-white/20'
+                    activeTab === item.id ? 'text-boomii-yellow/60' : 'text-white/20'
                   }`} />
                 </button>
               ))}
@@ -213,7 +213,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             {/* Footer */}
             <div className="px-4 pb-4 pt-1">
               <div className="text-[10px] text-white/30 text-center">
-                MIMO v2.0 — Fidelidade Digital
+                BOOMII v2.0 — Loyalty Club
               </div>
             </div>
           </div>

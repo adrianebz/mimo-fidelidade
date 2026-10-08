@@ -296,7 +296,7 @@ export const PassPreview: React.FC<PassPreviewProps> = ({
 
           {/* Wallet footer branding */}
           <div className="mt-1 flex items-center justify-between text-[9px] relative z-10 opacity-70">
-            <span style={{ color: labelColor }}>Fidelidade por Mimo</span>
+            <span style={{ color: labelColor }}>Fidelidade por Boomii</span>
             <span className="font-semibold uppercase tracking-wider" style={{ color: foregroundColor }}>
               {walletType === 'apple' ? 'Apple Wallet' : 'Google Wallet'}
             </span>

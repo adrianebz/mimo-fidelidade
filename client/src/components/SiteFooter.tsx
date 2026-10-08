@@ -1,5 +1,5 @@
 import React from 'react';
-import { MimoWordmark, SiteNavTab } from './SiteHeader.js';
+import { BoomiiWordmark, LinkAreaLojista, SiteNavTab } from './SiteHeader.js';
 
 interface SiteFooterProps {
   onNavigate: (tab: SiteNavTab) => void;
@@ -17,7 +17,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = ({ onNavigate }) => {
     <footer className="border-t border-border/60 bg-background">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-12 md:flex-row md:items-start md:justify-between">
         <div className="max-w-xs">
-          <MimoWordmark />
+          <BoomiiWordmark />
           <p className="mt-3 text-sm text-muted-foreground">
             Programa de fidelidade por selos direto na Apple Wallet e na Google Wallet. Sem
             aplicativo para o seu cliente baixar.
@@ -36,28 +36,24 @@ export const SiteFooter: React.FC<SiteFooterProps> = ({ onNavigate }) => {
               {item.label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => onNavigate('login')}
-            className="text-left text-sm font-semibold text-primary transition-colors hover:underline cursor-pointer bg-transparent border-0 p-0"
-          >
+          <LinkAreaLojista className="text-left text-sm font-semibold text-primary transition-colors hover:underline cursor-pointer">
             Área do Lojista (Login) →
-          </button>
+          </LinkAreaLojista>
         </nav>
 
         <div className="flex flex-col gap-3">
           <span className="label-eyebrow">Contato</span>
           <a
-            href="mailto:contato@mimo.com.br"
+            href="mailto:contato@boomii.com.br"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            contato@mimo.com.br
+            contato@boomii.com.br
           </a>
-          <span className="text-sm text-muted-foreground">São Paulo, Brasil</span>
+          <span className="text-sm text-muted-foreground">Pará, Brasil</span>
         </div>
       </div>
       <div className="border-t border-border/60 px-5 py-5 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} Mimo — Fidelidade Digital
+        © {new Date().getFullYear()} Boomii — Loyalty Club
       </div>
     </footer>
   );

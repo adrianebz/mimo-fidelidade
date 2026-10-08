@@ -7,7 +7,7 @@ import {
 
 export const DesktopCardStudio: React.FC = () => {
   const [storeName, setStoreName] = useState('Minha Loja');
-  const [headline, setHeadline] = useState('Fidelidade Mimo');
+  const [headline, setHeadline] = useState('Fidelidade Boomii');
   const [rewardLabel, setRewardLabel] = useState('1 Produto Grátis');
   const [rewardTitle, setRewardTitle] = useState('1 Produto Grátis');
   const [stampsGoal, setStampsGoal] = useState(10);
@@ -16,7 +16,7 @@ export const DesktopCardStudio: React.FC = () => {
   const [customHex, setCustomHex] = useState('#B85D19');
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [currentPassToken, setCurrentPassToken] = useState(
-    'mimo-pass-minha-loja-8f3a',
+    'boomii-pass-minha-loja-8f3a',
   );
   const [stampCount, setStampCount] = useState(8);
   const [isActive, setIsActive] = useState(true);
@@ -65,7 +65,7 @@ export const DesktopCardStudio: React.FC = () => {
           type="button"
           onClick={handlePublish}
           disabled={isSaving}
-          className="btn-mimo-yellow text-xs font-bold py-2.5 px-4 flex items-center gap-2"
+          className="btn-boomii-yellow text-xs font-bold py-2.5 px-4 flex items-center gap-2"
         >
           {isSaving ? (
             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -86,7 +86,7 @@ export const DesktopCardStudio: React.FC = () => {
       {/* 2-Column Grid (Matching Screen 4) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left: Configuration Form (50%) */}
-        <div className="lg:col-span-6 mimo-card p-6 space-y-5">
+        <div className="lg:col-span-6 boomii-card p-6 space-y-5">
           <h3 className="text-base font-bold text-white border-b border-white/8 pb-3 flex items-center gap-2">
             <Palette className="w-4 h-4 text-[#FFC82C]" />
             <span>Configurações do Cartão</span>
@@ -100,7 +100,7 @@ export const DesktopCardStudio: React.FC = () => {
               type="text"
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
-              className="input-mimo-dark font-semibold"
+              className="input-boomii-dark font-semibold"
             />
           </div>
 
@@ -113,7 +113,7 @@ export const DesktopCardStudio: React.FC = () => {
               value={rewardLabel}
               onChange={(e) => setRewardLabel(e.target.value)}
               placeholder="Ex: 1 Café Espresso Grátis"
-              className="input-mimo-dark font-semibold"
+              className="input-boomii-dark font-semibold"
             />
           </div>
 
@@ -176,7 +176,7 @@ export const DesktopCardStudio: React.FC = () => {
             type="button"
             onClick={handlePublish}
             disabled={isSaving}
-            className="btn-mimo-yellow w-full text-xs font-bold py-3.5"
+            className="btn-boomii-yellow w-full text-xs font-bold py-3.5"
           >
             Publicar Design do Cartão
           </button>

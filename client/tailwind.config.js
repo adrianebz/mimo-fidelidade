@@ -7,13 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        'mimo-graphite': '#0F0F10',
-        'mimo-offwhite': '#F7F5EF',
-        'mimo-yellow': '#FFC82C',
-        'mimo-green': '#16A34A',
-        'mimo-gray': '#8ABABF',
-        'mimo-orange': '#FF9F0A',
-        'mimo-red': '#FF453A',
+        'boomii-graphite': '#0F0F10',
+        'boomii-offwhite': '#F7F5EF',
+        'boomii-yellow': '#FFC82C',
+        'boomii-green': '#16A34A',
+        'boomii-gray': '#8ABABF',
+        'boomii-orange': '#FF9F0A',
+        'boomii-red': '#FF453A',
         'base': '#0F0F10',
         'elevated': '#16161A',
         'card': '#1F1F24'

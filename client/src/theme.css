@@ -4,8 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Mimo — Fidelidade Digital
- * Marca: preto grafite, amarelo Mimo, off-white, verde.
+ * Boomii — Fidelidade Digital
+ * Marca: preto grafite, amarelo Boomii, off-white, verde.
  * Estrutura visual tvOS: fundo quase preto, tipografia grande, cor com parcimônia.
  */
 
@@ -43,9 +43,60 @@
   --font-display: "Montserrat", ui-sans-serif, system-ui, sans-serif;
 }
 
+/*
+ * Dois temas. O claro vive em `:root` e o escuro sobrescreve em `.dark`, que é
+ * a classe aplicada no <html> — a mesma que o `@custom-variant dark` acima usa
+ * para ligar as utilidades `dark:`. Assim tokens e variantes trocam juntos.
+ *
+ * O amarelo e o verde da marca são idênticos nos dois temas: são cor de marca,
+ * não de superfície. Só o que é fundo, texto e borda inverte.
+ */
 :root {
   --radius: 1rem;
 
+  /* Superfícies claras */
+  --background: oklch(0.975 0.002 285);
+  --foreground: oklch(0.21 0.006 285);
+  --surface: oklch(1 0 0);
+  --surface-elevated: oklch(1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285);
+
+  /* Amarelo Boomii #FFC82C */
+  --primary: oklch(0.855 0.163 88);
+  --primary-foreground: oklch(0.16 0.004 285);
+
+  --secondary: oklch(0.955 0.003 285);
+  --secondary-foreground: oklch(0.21 0.006 285);
+  --muted: oklch(0.955 0.003 285);
+  --muted-foreground: oklch(0.52 0.008 285);
+  --accent: oklch(0.955 0.003 285);
+  --accent-foreground: oklch(0.21 0.006 285);
+
+  /* Verde Boomii #16A34A */
+  --success: oklch(0.58 0.16 150);
+  --success-foreground: oklch(0.99 0.002 90);
+
+  --destructive: oklch(0.58 0.21 25);
+  --destructive-foreground: oklch(0.99 0.002 90);
+
+  --border: oklch(0 0 0 / 10%);
+  --input: oklch(0 0 0 / 14%);
+  --ring: oklch(0.855 0.163 88);
+
+  --gradient-yellow: linear-gradient(135deg, oklch(0.9 0.15 95), oklch(0.83 0.17 82));
+  --gradient-surface: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--surface) 97%, var(--primary)),
+    var(--background)
+  );
+  --shadow-glow: 0 18px 50px -28px color-mix(in oklab, var(--primary) 70%, transparent);
+  --shadow-card: 0 12px 34px -22px oklch(0 0 0 / 22%);
+}
+
+.dark {
   /* Superfícies quase-pretas */
   --background: oklch(0.14 0.004 285);
   --foreground: oklch(0.98 0.002 90);
@@ -56,7 +107,6 @@
   --popover: oklch(0.18 0.004 285);
   --popover-foreground: oklch(0.98 0.002 90);
 
-  /* Amarelo Mimo #FFC82C */
   --primary: oklch(0.855 0.163 88);
   --primary-foreground: oklch(0.16 0.004 285);
 
@@ -67,7 +117,6 @@
   --accent: oklch(0.26 0.005 285);
   --accent-foreground: oklch(0.98 0.002 90);
 
-  /* Verde Mimo #16A34A */
   --success: oklch(0.63 0.16 150);
   --success-foreground: oklch(0.98 0.002 90);
 
@@ -78,7 +127,6 @@
   --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.855 0.163 88);
 
-  --gradient-yellow: linear-gradient(135deg, oklch(0.9 0.15 95), oklch(0.83 0.17 82));
   --gradient-surface: linear-gradient(
     160deg,
     color-mix(in oklab, var(--surface) 96%, var(--primary)),
@@ -127,7 +175,7 @@
   box-shadow: var(--shadow-card);
 }
 
-@utility btn-mimo {
+@utility btn-boomii {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -144,7 +192,7 @@
     filter 0.2s ease;
 }
 
-@utility btn-mimo-ghost {
+@utility btn-boomii-ghost {
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -72,7 +72,7 @@ export const SiteComoFunciona: React.FC<SiteComoFuncionaProps> = ({ onNavigate }
         <button
           type="button"
           onClick={() => onNavigate('precos')}
-          className="btn-mimo mt-10 cursor-pointer"
+          className="btn-boomii mt-10 cursor-pointer"
         >
           Ver planos
         </button>

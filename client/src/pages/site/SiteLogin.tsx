@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ArrowRight, Lock, Mail, AlertCircle, RefreshCw } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Lock, Mail, AlertCircle, RefreshCw, MailCheck, Eye, EyeOff } from 'lucide-react';
 import { SiteNavTab } from '../../components/SiteHeader.js';
 import {
   autenticarLojista,
-  autenticarAdminMimo,
+  autenticarAdminBoomii,
+  enviarRedefinicaoDeSenha,
   MASTER_ADMIN_EMAIL,
-} from '../../services/mimoWalletService.js';
+} from '../../services/boomiiWalletService.js';
 
 interface SiteLoginProps {
   onNavigate: (tab: SiteNavTab) => void;
@@ -17,11 +18,46 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [avisoMsg, setAvisoMsg] = useState<string | null>(null);
+  const [enviandoReset, setEnviandoReset] = useState(false);
   const [lembrar, setLembrar] = useState(true);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+
+  /**
+   * Redefinição de senha pelo próprio Firebase Auth.
+   *
+   * Quando o e-mail não tem conta, a mensagem diz isso claramente, em vez de
+   * fingir que enviou — decisão de produto, ver `enviarRedefinicaoDeSenha`.
+   */
+  const handleRedefinirSenha = async () => {
+    const emailLimpo = email.toLowerCase().trim();
+    setErrorMsg(null);
+    setAvisoMsg(null);
+
+    if (!emailLimpo) {
+      setErrorMsg('Informe o e-mail de acesso antes de pedir a redefinição.');
+      return;
+    }
+
+    setEnviandoReset(true);
+    try {
+      const res = await enviarRedefinicaoDeSenha(emailLimpo);
+      if (res.sucesso) {
+        setAvisoMsg(
+          `Link de redefinição enviado para ${emailLimpo}. Confira também a caixa de spam.`
+        );
+      } else {
+        setErrorMsg(res.erro || 'Não foi possível enviar o e-mail de redefinição.');
+      }
+    } finally {
+      setEnviandoReset(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setAvisoMsg(null);
 
     const emailLimpo = email.toLowerCase().trim();
     const senhaLimpa = senha.trim();
@@ -37,9 +73,9 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
       // 1. Verificação de Administrador Master (Adriane Bezerra) — a senha é
       // comparada no servidor, nunca no navegador.
       if (emailLimpo === MASTER_ADMIN_EMAIL.toLowerCase()) {
-        const adminRes = await autenticarAdminMimo(emailLimpo, senhaLimpa);
+        const adminRes = await autenticarAdminBoomii(emailLimpo, senhaLimpa);
         if (adminRes.sucesso) {
-          localStorage.setItem('mimo_admin_session', 'true');
+          localStorage.setItem('boomii_admin_session', 'true');
           setTimeout(() => {
             onNavigate('admin' as any);
           }, 300);
@@ -51,8 +87,8 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
       const res = await autenticarLojista(emailLimpo, senhaLimpa);
       if (res.sucesso && res.lojista) {
         const slug = res.lojista.slug || res.lojista.id;
-        localStorage.setItem('mimo_active_lojista', slug);
-        localStorage.removeItem('mimo_admin_session');
+        localStorage.setItem('boomii_active_lojista', slug);
+        localStorage.removeItem('boomii_admin_session');
         if (onSelectStore) {
           onSelectStore(slug);
         }
@@ -71,7 +107,9 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-12">
+    // Tela cheia: esta página é renderizada sem cabeçalho nem rodapé, então não
+    // há mais os 140px que antes eram descontados da altura.
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-12">
       {/* Ambient background glow */}
       <div
         className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-[450px] w-[500px] rounded-full opacity-15 blur-3xl"
@@ -83,7 +121,7 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Portal Seguro MIMO</span>
+            <span>Portal Seguro BOOMII</span>
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Acesso ao Sistema
@@ -106,6 +144,13 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium flex items-start gap-2.5 animate-fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {avisoMsg && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-start gap-2.5 animate-fade-in">
+              <MailCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{avisoMsg}</span>
             </div>
           )}
 
@@ -133,18 +178,34 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
                 <label htmlFor="senha" className="label-eyebrow">
                   Senha
                 </label>
+                <button
+                  type="button"
+                  onClick={handleRedefinirSenha}
+                  disabled={enviandoReset}
+                  className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-0 p-0 disabled:opacity-50 disabled:cursor-wait"
+                >
+                  {enviandoReset ? 'Enviando...' : 'Esqueci minha senha'}
+                </button>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   id="senha"
-                  type="password"
+                  type={mostrarSenha ? 'text' : 'password'}
                   required
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   placeholder="Digite sua senha"
-                  className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors"
+                  className="w-full rounded-xl border border-input bg-background pl-10 pr-11 py-2.5 text-sm text-foreground outline-none focus:border-primary transition-colors"
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setMostrarSenha(!mostrarSenha)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+                >
+                  {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -164,12 +225,12 @@ export const SiteLogin: React.FC<SiteLoginProps> = ({ onNavigate, onSelectStore 
           <button
             type="submit"
             disabled={loading}
-            className="btn-mimo w-full py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xl disabled:opacity-50"
+            className="btn-boomii w-full py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xl disabled:opacity-50"
           >
             {loading ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Autenticando no Firebase...</span>
+                <span>Autenticando...</span>
               </>
             ) : (
               <>

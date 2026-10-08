@@ -442,7 +442,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   <MessageCircle className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Suporte MIMO</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Suporte BOOMII</h3>
                   <p className="text-[11px] text-emerald-600">Tempo de resposta médio: 2 min</p>
                 </div>
               </div>

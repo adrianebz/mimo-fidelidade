@@ -25,7 +25,7 @@ function makeSampleHolder(design: CardDesign): CardHolderData {
     nome: 'Marina Azevedo',
     selos: Math.min(8, design.stamps.total),
     cartaoId: 'demo_5511999998888_1',
-    passCode: 'MIMO-PASS-MA01',
+    passCode: 'BOOMII-PASS-MA01',
     unidade: design.fields.unidade.value || 'Matriz',
     status: 'Ativo',
   };
@@ -110,7 +110,7 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mimo-cartao-${slug}.json`;
+    a.download = `boomii-cartao-${slug}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -143,7 +143,7 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
       {/* Barra de ações */}
       <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="label-eyebrow text-primary">Estúdio de Cartões Mimo</span>
+          <span className="label-eyebrow text-primary">Estúdio de Cartões Boomii</span>
           <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
             Identidade do Cartão de Fidelidade
           </h2>
@@ -154,11 +154,11 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={handleReset} className="btn-mimo-ghost !py-2.5 !px-4 !text-xs">
+          <button type="button" onClick={handleReset} className="btn-boomii-ghost !py-2.5 !px-4 !text-xs">
             <RotateCcw className="h-3.5 w-3.5" />
             Restaurar padrão
           </button>
-          <button type="button" onClick={handleExportJson} className="btn-mimo-ghost !py-2.5 !px-4 !text-xs">
+          <button type="button" onClick={handleExportJson} className="btn-boomii-ghost !py-2.5 !px-4 !text-xs">
             <Download className="h-3.5 w-3.5" />
             Exportar JSON
           </button>
@@ -166,7 +166,7 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
             type="button"
             onClick={handlePublish}
             disabled={publishing || !!readOnlyReason}
-            className="btn-mimo !py-2.5 !px-5 !text-xs disabled:opacity-50"
+            className="btn-boomii !py-2.5 !px-5 !text-xs disabled:opacity-50"
           >
             {publishing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {publishing ? 'Publicando…' : 'Publicar nas Carteiras'}

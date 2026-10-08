@@ -1,10 +1,10 @@
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase.js';
-import { publicarIdentidadeVisual } from '../services/mimoWalletService.js';
+import { publicarIdentidadeVisual } from '../services/boomiiWalletService.js';
 import type { CardDesign } from './types.js';
 import { createDefaultDesign, normalizeDesign } from './defaults.js';
 
-const LOCAL_KEY = (slug: string) => `mimo_card_design_${slug}`;
+const LOCAL_KEY = (slug: string) => `boomii_card_design_${slug}`;
 
 /**
  * Converte o design para o formato `layout` legado, que é o que as Cloud
@@ -133,42 +133,18 @@ export async function publishDesign(slug: string, design: CardDesign): Promise<P
   const versao = String(Date.now());
   const published: CardDesign = { ...design, version: versao, updatedAt: new Date().toISOString() };
 
-  // 1. Espelha no layout legado + gera as URLs dinâmicas de logo/banner
+  // 1. Espelha no layout legado + gera as URLs dinâmicas de logo/banner + grava design atomicamente
   const legacy = designToLegacyConfig(published);
-  const res = await publicarIdentidadeVisual(slug, { ...legacy, versao });
-
-  // 2. Grava o JSON completo e a meta de selos usada pela emissão do cartão
-  try {
-    await setDoc(
-      doc(db, 'lojistas', slug),
-      {
-        design: published,
-        regras: {
-          meta: published.stamps.total,
-          // Espelhado em `regras` porque é lá que as Cloud Functions procuram
-          // os limites de operação do balcão.
-          selosPorLeitura: published.stamps.perScan,
-          maxSelosPorLeitura: published.stamps.maxPerScan,
-        },
-        // setDoc com merge faz merge profundo de mapas aninhados, então estes
-        // campos são acrescentados ao `layout` sem apagar o que já existe.
-        // (Chave com ponto só vira caminho aninhado em updateDoc, não aqui.)
-        layout: {
-          stampShape: published.stamps.shape,
-          stampFill: published.stamps.fill,
-          showNumbersOnEmpty: published.stamps.showNumbersOnEmpty,
-          stampColumns: published.stamps.columns,
-          stampInk: published.colors.stampInk,
-          rewardColor: published.reward.color,
-          rewardIcon: published.reward.iconKey,
-        },
-        atualizadoEm: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (err: any) {
-    console.warn('Falha ao gravar o design completo no Firestore:', err?.message);
-  }
+  const res = await publicarIdentidadeVisual(slug, {
+    ...legacy,
+    versao,
+    design: published,
+    regras: {
+      meta: published.stamps.total,
+      selosPorLeitura: published.stamps.perScan,
+      maxSelosPorLeitura: published.stamps.maxPerScan,
+    },
+  });
 
   saveDraft(slug, published);
 

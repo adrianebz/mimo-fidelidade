@@ -31,7 +31,7 @@ export const DesktopOverview: React.FC = () => {
       {/* 4 KPI Cards (Matching Screen 1) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1 */}
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
               Total Clientes
@@ -50,7 +50,7 @@ export const DesktopOverview: React.FC = () => {
         </div>
 
         {/* KPI 2 */}
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
               Selos Emitidos
@@ -69,7 +69,7 @@ export const DesktopOverview: React.FC = () => {
         </div>
 
         {/* KPI 3 */}
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
               Recompensas
@@ -88,7 +88,7 @@ export const DesktopOverview: React.FC = () => {
         </div>
 
         {/* KPI 4 */}
-        <div className="mimo-card p-5">
+        <div className="boomii-card p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white/50 uppercase tracking-wider">
               Taxa Retenção
@@ -110,7 +110,7 @@ export const DesktopOverview: React.FC = () => {
       {/* Main Row: Chart & Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Chart: Selos Distribuídos na Semana */}
-        <div className="lg:col-span-8 mimo-card p-6 space-y-4">
+        <div className="lg:col-span-8 boomii-card p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-white/8 pb-4">
             <div>
               <h3 className="text-base font-bold text-white">
@@ -153,7 +153,7 @@ export const DesktopOverview: React.FC = () => {
         </div>
 
         {/* Right Card: Atividade Recente */}
-        <div className="lg:col-span-4 mimo-card p-6 space-y-4">
+        <div className="lg:col-span-4 boomii-card p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-white/8 pb-3">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#FFC82C]" />

@@ -1,19 +1,60 @@
 {
-  "hosting": {
-    "site": "mimo-fidelidade",
-    "public": "client/dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "site": "boomii-fidelidade",
+      "public": "client/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "//": "Site da marca antiga. Serve o MESMO build para que os assets referenciados por passes ja emitidos (/logos, /banners) continuem respondendo 200 - o Google busca essas imagens no servidor e um 301 pode quebra-las. Apenas as rotas de navegacao redirecionam.",
+      "site": "mimo-fidelidade",
+      "public": "client/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "redirects": [
+        { "source": "/", "destination": "https://www.boomii.com.br/", "type": 301 },
+        { "source": "/como-funciona", "destination": "https://www.boomii.com.br/como-funciona", "type": 301 },
+        { "source": "/precos", "destination": "https://www.boomii.com.br/precos", "type": 301 },
+        { "source": "/planos", "destination": "https://www.boomii.com.br/precos", "type": 301 },
+        { "source": "/contato", "destination": "https://www.boomii.com.br/contato", "type": 301 },
+        { "source": "/areadolojista", "destination": "https://www.boomii.com.br/areadolojista", "type": 301 },
+        { "source": "/arealojista", "destination": "https://www.boomii.com.br/areadolojista", "type": 301 },
+        { "source": "/login", "destination": "https://www.boomii.com.br/areadolojista", "type": 301 },
+        { "source": "/entrar", "destination": "https://www.boomii.com.br/areadolojista", "type": 301 },
+        { "source": "/painel", "destination": "https://www.boomii.com.br/painel", "type": 301 },
+        { "source": "/admin", "destination": "https://www.boomii.com.br/admin", "type": 301 }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

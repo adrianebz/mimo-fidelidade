@@ -1,5 +1,5 @@
 /**
- * Seed script for Firestore database (Mimo Fidelidade)
+ * Seed script for Firestore database (Boomii Fidelidade)
  * Default merchant structure: Minha Loja with operators, items, and active loyalty cards
  */
 

@@ -13,8 +13,8 @@ export const STAMP_ICON_CATALOG: Array<{ key: StampIconKey; label: string; emoji
 
 export const PALETTES: PalettePreset[] = [
   {
-    id: 'preto-mimo',
-    name: 'Preto Mimo',
+    id: 'preto-boomii',
+    name: 'Preto Boomii',
     swatch: '#FFC82C',
     colors: {
       background: '#141416',
@@ -100,7 +100,7 @@ export function createDefaultDesign(storeName = 'Minha Loja'): CardDesign {
     },
     reward: {
       label: 'Cookie Grátis',
-      description: 'Apresente o QR Code e retire seu mimo.',
+      description: 'Apresente o QR Code e retire sua recompensa.',
       iconKey: 'gift',
       imageDataUrl: null,
       color: '#FFC82C',
@@ -109,15 +109,16 @@ export function createDefaultDesign(storeName = 'Minha Loja'): CardDesign {
     fields: {
       cliente: { enabled: true, label: 'CLIENTE' },
       faltam: { enabled: true, label: 'FALTAM' },
-      mimo: { enabled: true, label: 'MIMO' },
+      recompensa: { enabled: true, label: 'RECOMPENSA' },
       unidade: { enabled: true, label: 'UNIDADE', value: 'Matriz' },
       programa: { enabled: false, label: 'PROGRAMA' },
       status: { enabled: false, label: 'STATUS' },
       validade: { enabled: false, label: 'VALIDADE' },
+      ciclo: { enabled: false, label: 'CICLO' },
     },
     qr: {
       enabled: true,
-      format: 'mimo',
+      format: 'boomii',
       showPassCode: true,
       label: 'Apresente no caixa para creditar o selo',
     },
@@ -140,11 +141,12 @@ export function normalizeDesign(partial: any, storeName?: string): CardDesign {
     fields: {
       cliente: { ...base.fields.cliente, ...(partial.fields?.cliente || {}) },
       faltam: { ...base.fields.faltam, ...(partial.fields?.faltam || {}) },
-      mimo: { ...base.fields.mimo, ...(partial.fields?.mimo || {}) },
+      recompensa: { ...base.fields.recompensa, ...(partial.fields?.recompensa || {}) },
       unidade: { ...base.fields.unidade, ...(partial.fields?.unidade || {}) },
       programa: { ...base.fields.programa, ...(partial.fields?.programa || {}) },
       status: { ...base.fields.status, ...(partial.fields?.status || {}) },
       validade: { ...base.fields.validade, ...(partial.fields?.validade || {}) },
+      ciclo: { ...base.fields.ciclo, ...(partial.fields?.ciclo || {}) },
     },
     qr: { ...base.qr, ...(partial.qr || {}) },
     schemaVersion: 1,

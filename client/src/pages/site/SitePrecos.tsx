@@ -38,7 +38,7 @@ const planos = [
     resumo: "Para franquias e operações grandes.",
     itens: [
       "Unidades ilimitadas",
-      "Assinatura Mimo removida do cartão",
+      "Assinatura Boomii removida do cartão",
       "Integração com o seu sistema de caixa",
       "Ambiente de testes dedicado",
       "Gerente de conta",
@@ -89,7 +89,7 @@ export const SitePrecos: React.FC<SitePrecosProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('contato')}
-              className={`mt-8 cursor-pointer ${p.destaque ? "btn-mimo" : "btn-mimo-ghost hover:bg-secondary"}`}
+              className={`mt-8 cursor-pointer ${p.destaque ? "btn-boomii" : "btn-boomii-ghost hover:bg-secondary"}`}
             >
               {p.preco === "Sob medida" ? "Falar com vendas" : "Assinar"}
             </button>

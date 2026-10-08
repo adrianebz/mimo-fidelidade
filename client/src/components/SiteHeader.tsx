@@ -1,16 +1,54 @@
 import React, { useState } from 'react';
+import infinito from '../assets/boomii-infinito.png';
+import { URL_AREA_LOJISTA } from '../siteConfig.js';
 
 export type SiteNavTab = 'inicio' | 'como-funciona' | 'precos' | 'contato' | 'login' | 'painel' | 'admin';
+
+/**
+ * Link da Área do Lojista. Abre em outra aba porque é uma tela isolada, sem o
+ * cabeçalho e o rodapé do site — o lojista trabalha ali, não navega.
+ */
+export function LinkAreaLojista({
+  className = '',
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={URL_AREA_LOJISTA}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 interface SiteHeaderProps {
   currentTab: SiteNavTab;
   onNavigate: (tab: SiteNavTab) => void;
 }
 
-export function MimoWordmark({ className = '' }: { className?: string }) {
+export function BoomiiWordmark({ className = '' }: { className?: string }) {
   return (
-    <span className={`font-display text-2xl font-bold tracking-tight ${className}`}>
-      mim<span className="text-primary">o</span>
+    <span
+      className={`font-display inline-flex items-center text-2xl font-bold tracking-tight ${className}`}
+      role="img"
+      aria-label="BOOMII"
+    >
+      B
+      <img
+        src={infinito}
+        alt=""
+        aria-hidden="true"
+        className="mx-[1px] block"
+        width={28}
+        height={14}
+      />
+      MII
     </span>
   );
 }
@@ -34,9 +72,9 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ currentTab, onNavigate }
           onClick={() => onNavigate('inicio')}
           className="flex items-baseline gap-2 cursor-pointer focus:outline-none bg-transparent border-0 p-0 text-left"
         >
-          <MimoWordmark />
+          <BoomiiWordmark />
           <span className="hidden text-[10px] tracking-[0.28em] text-muted-foreground sm:inline">
-            FIDELIDADE DIGITAL
+            LOYALTY CLUB
           </span>
         </button>
 
@@ -63,20 +101,16 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ currentTab, onNavigate }
 
         {/* CTA Button & Login link */}
         <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onNavigate('login')}
-            className="hidden sm:inline-flex text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer bg-transparent border-0 p-0"
-          >
+          <LinkAreaLojista className="hidden sm:inline-flex text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
             Área do Lojista
-          </button>
+          </LinkAreaLojista>
 
           <button
             type="button"
             onClick={() => onNavigate('contato')}
-            className="btn-mimo px-5 py-2.5 text-sm cursor-pointer"
+            className="btn-boomii px-5 py-2.5 text-sm cursor-pointer"
           >
-            Falar com a Mimo
+            Falar com a Boomii
           </button>
 
           {/* Mobile hamburger */}
@@ -117,16 +151,9 @@ export const SiteHeader: React.FC<SiteHeaderProps> = ({ currentTab, onNavigate }
               {item.label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => {
-              onNavigate('login');
-              setMobileMenuOpen(false);
-            }}
-            className="block w-full text-left py-2 text-sm font-semibold text-primary cursor-pointer bg-transparent border-0"
-          >
+          <LinkAreaLojista className="block w-full text-left py-2 text-sm font-semibold text-primary cursor-pointer">
             Área do Lojista →
-          </button>
+          </LinkAreaLojista>
         </div>
       )}
     </header>

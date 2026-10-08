@@ -53,7 +53,7 @@ export function getActiveDesign(orgId: string): CardDesign {
       accentColor: '#FFC82C',
       rewardLabel: store?.rewardLabel || 'Cookie Grátis',
       stampIcon: 'coin',
-      showMimoBranding: true
+      showBoomiiBranding: true
     },
     status: 'published',
     createdAt: new Date().toISOString()

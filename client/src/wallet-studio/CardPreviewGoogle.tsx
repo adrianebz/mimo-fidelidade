@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CardDesign, CardHolderData } from './types.js';
 import { StampGrid } from './StampGrid.js';
+import { montarCamposDoPasse } from './passFields.js';
 import { StampGlyph } from './StampGlyph.js';
 import { useQrCode } from './useQrCode.js';
 
@@ -13,7 +14,7 @@ interface CardPreviewProps {
  * Prévia no estilo Google Wallet.
  *
  * A Google Wallet monta o passe em blocos: cabeçalho da classe, saldo
- * (loyaltyPoints), imagem hero — que no MIMO é a cartela de selos gerada
+ * (loyaltyPoints), imagem hero — que no BOOMII é a cartela de selos gerada
  * dinamicamente pela Cloud Function generateBanner — e os módulos de texto
  * logo abaixo. A prévia reproduz essa mesma ordem para não iludir o lojista.
  */
@@ -21,32 +22,17 @@ export const CardPreviewGoogle: React.FC<CardPreviewProps> = ({ design, holder }
   const { brand, colors, stamps, reward, fields, qr } = design;
   const faltam = Math.max(0, stamps.total - holder.selos);
   const qrValue = qr.format === 'url'
-    ? `https://mimo-fidelidade.web.app/c/${holder.cartaoId}`
-    : `MIMO:${holder.cartaoId}:${'8821'}`;
+    ? `https://boomii-fidelidade.web.app/c/${holder.cartaoId}`
+    : `BOOMII:${holder.cartaoId}:${'8821'}`;
   const qrDataUrl = useQrCode(qrValue, qr.enabled);
   const logo = brand.logoDataUrl || brand.logoUrl;
 
-  const textModules: Array<{ header: string; body: string }> = [];
-  if (fields.cliente.enabled) textModules.push({ header: fields.cliente.label, body: holder.nome });
-  if (fields.mimo.enabled) textModules.push({ header: 'PRÊMIO DO MIMO', body: reward.label });
-  if (fields.faltam.enabled) {
-    textModules.push({
-      header: 'PROGRESSO DO CICLO',
-      body:
-        faltam === 0
-          ? `Cartão completo! (${holder.selos}/${stamps.total} selos)`
-          : `${holder.selos} de ${stamps.total} selos acumulados (Faltam ${faltam})`,
-    });
-  }
-  if (fields.unidade.enabled) {
-    textModules.push({ header: fields.unidade.label, body: holder.unidade || fields.unidade.value || 'Matriz' });
-  }
-  if (fields.status.enabled) {
-    textModules.push({ header: fields.status.label, body: holder.status || (faltam === 0 ? 'Completo' : 'Ativo') });
-  }
-  if (fields.validade.enabled) {
-    textModules.push({ header: fields.validade.label, body: `${reward.validityDays} dias após completar` });
-  }
+  // Mesma função que as Cloud Functions espelham, para a prévia e o passe real
+  // saírem iguais — inclusive os rótulos que o lojista renomeou.
+  const textModules = montarCamposDoPasse(design, holder).map((campo) => ({
+    header: campo.rotulo,
+    body: campo.valor,
+  }));
   textModules.push({ header: 'INSTRUÇÕES NO BALCÃO', body: reward.description });
 
   return (
@@ -77,7 +63,7 @@ export const CardPreviewGoogle: React.FC<CardPreviewProps> = ({ design, holder }
         {/* Saldo (loyaltyPoints) */}
         <div className="mt-3.5">
           <div className="text-[8.5px] font-semibold tracking-[0.14em]" style={{ color: colors.muted }}>
-            CARTÃO MIMO
+            CARTÃO BOOMII
           </div>
           <div className="text-[20px] font-black leading-tight" style={{ color: colors.accent }}>
             {holder.selos} / {stamps.total} SELOS

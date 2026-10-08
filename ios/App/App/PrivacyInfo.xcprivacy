@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Declara que o app NÃO rastreia usuários através de apps/sites de terceiros -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    
+    <!-- Categorias de dados coletados (nenhum dado para publicidade/rastreamento) -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    
+    <!-- APIs de Razão Requerida (Apple Required Reason APIs) exigidas pela Apple desde maio/2024 -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!-- UserDefaults (Capacitor Storage e preferências locais) -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+        <!-- File Timestamp (Validação de integridade e cache dos arquivos web) -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <!-- System Boot Time (Medição de ciclo de vida e estabilidade do app) -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+        <!-- Disk Space (Verificação de espaço em disco para armazenamento de cache) -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

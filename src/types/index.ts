@@ -113,7 +113,7 @@ export interface CardDesignConfig {
   logoUrl?: string;
   rewardLabel: string;      // e.g. "Cookie Grátis"
   stampIcon: 'coin' | 'smile' | 'star' | 'coffee';
-  showMimoBranding: boolean;
+  showBoomiiBranding: boolean;
 }
 
 export interface CardDesign {

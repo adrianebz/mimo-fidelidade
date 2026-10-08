@@ -38,15 +38,13 @@ export function generateStampGridSvg(
     const is10th = i === 10;
 
     if (isFilled) {
-      // Golden / Mimo Yellow coin with gradient and smile
+      // Moeda dourada. O rosto do mascote antigo foi removido daqui: além de ser
+      // a marca que não pode mais ser usada, o cartão na carteira carrega a marca
+      // do lojista, nunca a da plataforma (ver docs/10-marca-boomii.md).
       circles.push(`
         <g filter="url(#goldGlow)">
           <circle cx="${cx}" cy="${cy}" r="${radius}" fill="url(#goldGradient)" stroke="#FFE885" stroke-width="3"/>
           <circle cx="${cx}" cy="${cy}" r="${radius - 6}" fill="none" stroke="#B8860B" stroke-width="1.5" stroke-dasharray="4,3"/>
-          <!-- Mascot / Smile Icon inside coin -->
-          <path d="M ${cx - 18} ${cy + 6} Q ${cx} ${cy + 22} ${cx + 18} ${cy + 6}" fill="none" stroke="#2D1F00" stroke-width="5" stroke-linecap="round"/>
-          <circle cx="${cx - 12}" cy="${cy - 8}" r="3.5" fill="#2D1F00"/>
-          <circle cx="${cx + 12}" cy="${cy - 8}" r="3.5" fill="#2D1F00"/>
           <!-- Shine highlight -->
           <ellipse cx="${cx - 16}" cy="${cy - 18}" rx="14" ry="6" fill="#FFFFFF" opacity="0.35" transform="rotate(-25 ${cx - 16} ${cy - 18})"/>
         </g>

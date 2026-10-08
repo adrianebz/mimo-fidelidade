@@ -66,7 +66,7 @@ export const PlatformAdmin: React.FC = () => {
             <span className="text-slate-700 font-semibold">Superadmin da Plataforma</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Governança Multiempresa MIMO
+            Governança Multiempresa BOOMII
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Gestão global de lojistas, isolamento de dados e monitoramento de infraestrutura.

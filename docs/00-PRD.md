@@ -1,9 +1,9 @@
-# PRD — Mimo
+# PRD — Boomii
 ## Plataforma multiempresa de fidelidade em carteira digital
 
 | | |
 |---|---|
-| **Produto** | Mimo — Fidelidade Digital |
+| **Produto** | Boomii — Fidelidade Digital |
 | **Versão do documento** | 2.0 |
 | **Data** | Setembro 2026 |
 | **Status** | Base para desenvolvimento |
@@ -16,7 +16,7 @@
 
 ## 1. Resumo executivo
 
-Mimo é uma plataforma SaaS que permite a qualquer lojista operar um programa de
+Boomii é uma plataforma SaaS que permite a qualquer lojista operar um programa de
 fidelidade por selos, com o cartão vivendo dentro da Apple Wallet e da Google
 Wallet do consumidor.
 
@@ -36,7 +36,7 @@ Este documento substitui uma versão anterior que descrevia um sistema interno
 para uma única loja, cuja justificativa era economizar R$ 100 por pacote de
 clientes.
 
-**Isso não é mais o projeto.** Mimo é um produto para vender a terceiros. A
+**Isso não é mais o projeto.** Boomii é um produto para vender a terceiros. A
 justificativa deixa de ser economia de custo e passa a ser receita. As
 consequências são reais e estão registradas ao longo do documento: isolamento de
 dados vira requisito legal, o certificado da Apple vira risco concentrado, e
@@ -50,7 +50,7 @@ Lojas físicas de bairro operam fidelidade com cartão de papel — que se perde
 falsifica e não gera dado nenhum — ou com plataformas que cobram por pacote de
 clientes, penalizando exatamente o crescimento que o programa deveria produzir.
 
-Mimo oferece:
+Boomii oferece:
 
 - cartão na carteira que o consumidor já abre para pagar
 - operação de balcão em poucos segundos, por leitura de QR
@@ -236,20 +236,20 @@ Detalhamento em `03-modelo-de-dados.md`.
 
 ## 7. Arquitetura de marca
 
-Mimo é a marca da plataforma. O lojista tem a própria marca. **Elas não competem
+Boomii é a marca da plataforma. O lojista tem a própria marca. **Elas não competem
 pelo mesmo espaço.**
 
 | Superfície | Marca dominante |
 |---|---|
-| Site institucional e material de venda | Mimo |
-| Painel da plataforma | Mimo |
-| Painel do lojista | Mimo na moldura, lojista no conteúdo |
+| Site institucional e material de venda | Boomii |
+| Painel da plataforma | Boomii |
+| Painel do lojista | Boomii na moldura, lojista no conteúdo |
 | PWA de balcão | Lojista |
-| Formulário de cadastro do consumidor | Lojista, com assinatura Mimo discreta |
+| Formulário de cadastro do consumidor | Lojista, com assinatura Boomii discreta |
 | **Cartão na carteira** | **Lojista, sempre** |
 | Notificação da carteira | Lojista |
 
-O material de identidade mostra o cartão da carteira com a marca Mimo. Isso
+O material de identidade mostra o cartão da carteira com a marca Boomii. Isso
 funciona para vender ao lojista, **não para o produto**: o cliente da padaria
 adiciona o cartão da padaria. Ver ver a marca errada na carteira destrói
 justamente o reforço de marca que o lojista está comprando.
@@ -257,7 +257,7 @@ justamente o reforço de marca que o lojista está comprando.
 Tecnicamente viável: o `organizationName` do passe Apple é por passe, e o
 `issuerName` do Google fica na `LoyaltyClass`, que já é uma por organização.
 
-Detalhamento, paleta, tipografia e pendências em `10-marca-mimo.md`.
+Detalhamento, paleta, tipografia e pendências em `10-marca-boomii.md`.
 
 ---
 
@@ -390,7 +390,7 @@ Detalhamento em `02-arquitetura.md`.
 
 ### Papéis — decisão necessária antes do primeiro cliente real
 
-O lojista é **controlador** dos dados dos seus clientes. Mimo é **operadora**.
+O lojista é **controlador** dos dados dos seus clientes. Boomii é **operadora**.
 Isso exige contrato de tratamento de dados assinado com cada lojista antes do
 primeiro consumidor cadastrado. Não é item de Fase 5.
 
@@ -411,7 +411,7 @@ primeiro consumidor cadastrado. Não é item de Fase 5.
 
 ### Riscos concentrados de plataforma
 
-Estes existem porque Mimo é multiempresa. Não existiam no projeto de loja única.
+Estes existem porque Boomii é multiempresa. Não existiam no projeto de loja única.
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
@@ -429,7 +429,7 @@ Estes existem porque Mimo é multiempresa. Não existiam no projeto de loja úni
 ### Sobre o certificado único da Apple
 
 Todos os cartões de todos os lojistas são assinados sob o mesmo Pass Type ID da
-Mimo. É o modelo padrão do mercado e o único viável comercialmente — exigir que
+Boomii. É o modelo padrão do mercado e o único viável comercialmente — exigir que
 cada lojista abra conta na Apple transforma um onboarding de minutos em uma
 espera de semanas e mata a conversão.
 
@@ -478,11 +478,11 @@ Ver `11-concorrencia.md`.
 
 Isso importa por dois motivos:
 
-1. A base de infraestrutura da Mimo (~R$ 70/mês) equivale a **três assinaturas
+1. A base de infraestrutura da Boomii (~R$ 70/mês) equivale a **três assinaturas
    Starter do concorrente**. Só a partir de ~10 lojistas pagantes o modelo
    respira.
 2. **A cunha competitiva é preço fixo com cartões ilimitados.** O custo marginal
-   por cartão da Mimo é próximo de zero; o modelo de cobrança dos concorrentes
+   por cartão da Boomii é próximo de zero; o modelo de cobrança dos concorrentes
    não permite acompanhar. É a mesma dor que originou este projeto.
 
 **Decisão até o fim do piloto (Q15), com modelagem de cota real (Q18).**
@@ -538,8 +538,8 @@ tudo.
 | D9 | Atualização de passe assíncrona via outbox | Falha externa não pode desfazer fidelidade (RN12) |
 | D10 | `pass_revision` monotônica, não timestamp | Relógio e concorrência tornam timestamp inconfiável |
 | D11 | Lojistas nunca acessam dados de outros lojistas | Requisito legal e contratual, não preferência |
-| D12 | Marca do cartão é do lojista, nunca da Mimo | O ativo de marca reforçado precisa ser o do lojista |
-| D13 | Estrutura visual tvOS, voz da marca Mimo | Fundo escuro e hierarquia ampla com Montserrat e amarelo Mimo |
+| D12 | Marca do cartão é do lojista, nunca da Boomii | O ativo de marca reforçado precisa ser o do lojista |
+| D13 | Estrutura visual tvOS, voz da marca Boomii | Fundo escuro e hierarquia ampla com Montserrat e amarelo Boomii |
 | D14 | Design editável, layout não | Restrição da Apple e do Google, não escolha nossa |
 | D15 | Cloud Run com `min-instances: 1` | Cold start estoura o alvo de 2s no carimbo |
 
@@ -553,14 +553,14 @@ tudo.
 | Q8 | O QR de convite abre formulário para o cliente digitar, ou o operador digita antes? | Formulário e fluxo de balcão | **Fase 0** |
 | Q9 | Coletar telefone além do e-mail? | Canal de reemissão e campanha futura | **Fase 1** |
 | Q10 | Data de nascimento tem finalidade concreta? | LGPD — sem finalidade, não coletar | **Fase 1** |
-| Q12 | Qual paleta Mimo é a canônica? Os dois materiais divergem em 4 de 5 cores | Todo o CSS e a geração de imagens | **Fase 1** |
+| Q12 | Qual paleta Boomii é a canônica? Os dois materiais divergem em 4 de 5 cores | Todo o CSS e a geração de imagens | **Fase 1** |
 | Q13 | Qual arquivo de Montserrat Rounded, e sob qual licença? | Gerador de imagem em produto comercial | **Fase 1** |
-| Q11 | Lojista pode remover a assinatura Mimo? (white-label) | Modelo de dados da config de design | Fase 5 |
-| Q14 | Selo padrão: círculo neutro ou símbolo Mimo? | Gerador de imagem e construtor | Fase 5 |
+| Q11 | Lojista pode remover a assinatura Boomii? (white-label) | Modelo de dados da config de design | Fase 5 |
+| Q14 | Selo padrão: círculo neutro ou símbolo Boomii? | Gerador de imagem e construtor | Fase 5 |
 | Q15 | Modelo de precificação | Faturamento pós-piloto | Fase 6 |
 | Q17 | Cadastro configurável entre convite e QR aberto? | Remove o principal atrito competitivo | Fase 2 |
 | Q18 | Preço fixo com cartões ilimitados é sustentável? | Modelagem de cota Firestore | Fase 6 |
-| Q19 | Qual o time-to-value medido da Mimo? | Concorrente promete 5 minutos | Fase 5 |
+| Q19 | Qual o time-to-value medido da Boomii? | Concorrente promete 5 minutos | Fase 5 |
 | Q20 | Por que o lojista trocaria de plataforma? | **Valida o posicionamento** | Fase 6 |
 | Q16 | Contrato de tratamento de dados: quem redige e revisa? | Primeiro cliente real | **Fase 0** |
 

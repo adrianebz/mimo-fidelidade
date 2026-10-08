@@ -1,5 +1,5 @@
 /**
- * Dados de inicialização e estrutura base (Mimo Fidelidade)
+ * Dados de inicialização e estrutura base (Boomii Fidelidade)
  * Suporte a status financeiro ('adimplente' | 'inadimplente') e parametrização de planos.
  */
 

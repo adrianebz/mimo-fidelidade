@@ -35,7 +35,7 @@ export class GoneError extends Error {
  * In-memory transactional database engine mimicking Cloud Firestore semantics
  * with pessimistic locking, isolation enforcement, uniques, and collection group queries.
  */
-class MimoDatabase {
+class BoomiiDatabase {
   private documents: Map<string, any> = new Map();
   private locks: Set<string> = new Set();
 
@@ -192,7 +192,7 @@ class MimoDatabase {
         accentColor: '#FFC82C',
         rewardLabel: 'Cookie Grátis',
         stampIcon: 'coin',
-        showMimoBranding: true
+        showBoomiiBranding: true
       },
       status: 'published',
       publishedAt: '2026-09-01T10:00:00.000Z',
@@ -288,7 +288,7 @@ export class TransactionContext {
   private pendingDeletes: Set<string> = new Set();
 
   constructor(
-    private db: MimoDatabase,
+    private db: BoomiiDatabase,
     private lockCallback: (path: string) => void
   ) {}
 
@@ -346,4 +346,4 @@ export class TransactionContext {
   }
 }
 
-export const db = new MimoDatabase();
+export const db = new BoomiiDatabase();

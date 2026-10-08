@@ -1,9 +1,9 @@
 # 09 — Design System e Construtor de Cartão
 
-> **Leia junto com `10-marca-mimo.md`.** Este documento define a *estrutura*
-> visual; a marca Mimo define a *voz*. Onde houver conflito de cor ou fonte, o
+> **Leia junto com `10-marca-boomii.md`.** Este documento define a *estrutura*
+> visual; a marca Boomii define a *voz*. Onde houver conflito de cor ou fonte, o
 > documento de marca prevalece. Os tokens dourados abaixo foram substituídos
-> pelo amarelo Mimo `#FFC82C`, e SF Pro por Montserrat Rounded nas superfícies
+> pelo amarelo Boomii `#FFC82C`, e SF Pro por Montserrat Rounded nas superfícies
 > web.
 
 Referência estrutural: **Apple TV / tvOS**. Fundo quase preto, tipografia grande e

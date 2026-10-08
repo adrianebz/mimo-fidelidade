@@ -133,14 +133,14 @@ export const DesktopCustomers: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar cliente..."
-              className="input-mimo-dark pl-9 text-xs py-2 w-48 sm:w-64"
+              className="input-boomii-dark pl-9 text-xs py-2 w-48 sm:w-64"
             />
           </div>
 
           <button
             type="button"
             onClick={() => alert('Para cadastrar cliente no balcão, utilize o QR Convite!')}
-            className="btn-mimo-yellow text-xs font-bold py-2 px-3.5"
+            className="btn-boomii-yellow text-xs font-bold py-2 px-3.5"
           >
             <Plus className="w-4 h-4" />
             <span>Novo Cliente</span>
@@ -158,7 +158,7 @@ export const DesktopCustomers: React.FC = () => {
       {/* 2-Column Layout (Matching Screen 2) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: Customer List Table (65%) */}
-        <div className="lg:col-span-8 mimo-card overflow-hidden">
+        <div className="lg:col-span-8 boomii-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -246,7 +246,7 @@ export const DesktopCustomers: React.FC = () => {
         </div>
 
         {/* Right: Selected Customer Card Drawer (35%) */}
-        <div className="lg:col-span-4 mimo-card p-6 space-y-5 sticky top-32">
+        <div className="lg:col-span-4 boomii-card p-6 space-y-5 sticky top-32">
           {/* Header & Avatar */}
           <div className="text-center space-y-2 border-b border-white/8 pb-4">
             <div className="w-16 h-16 rounded-full bg-[#FFC82C] text-black font-black text-xl flex items-center justify-center mx-auto shadow-lg shadow-[#FFC82C]/20">
@@ -311,7 +311,7 @@ export const DesktopCustomers: React.FC = () => {
           <button
             type="button"
             onClick={handleStampCustomer}
-            className="btn-mimo-yellow w-full text-xs font-bold py-3.5 shadow-md flex items-center justify-center gap-2"
+            className="btn-boomii-yellow w-full text-xs font-bold py-3.5 shadow-md flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
             <span>Carimbar Selo (+1)</span>
