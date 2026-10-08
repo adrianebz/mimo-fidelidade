@@ -1390,6 +1390,19 @@ exports.migrarPinsOperadores = onCall({ region: 'southamerica-east1' }, async (r
 });
 
 /**
+ * A mesma limpeza, sozinha, a cada hora: roda pela primeira vez logo após o
+ * deploy e depois só pega o que um admin eventualmente gravar no lugar antigo.
+ * Lê apenas os documentos das lojas — custo desprezível.
+ */
+exports.limparPinsPublicos = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Sao_Paulo' },
+  async () => {
+    const migradas = await operadores.migrarTodas(admin.firestore());
+    if (migradas) console.log(`PINs públicos removidos de ${migradas} loja(s).`);
+  }
+);
+
+/**
  * 10. Disparo manual de notificação para a carteira de um cliente (botões do painel).
  */
 exports.dispararNotificacaoManual = onCall(
