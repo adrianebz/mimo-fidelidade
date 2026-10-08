@@ -37,7 +37,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Validar Segredos Obrigatórios
         env:
@@ -67,8 +66,8 @@ jobs:
 
       - name: Instalar dependências da raiz e do cliente
         run: |
-          npm ci || npm install
-          npm --prefix client ci || npm --prefix client install
+          npm install
+          npm --prefix client install
 
       - name: Compilar Frontend React (Vite)
         run: |
