@@ -171,24 +171,32 @@ jobs:
       - name: Enviar para o App Store Connect
         if: "${{ inputs.upload_to_appstore == true }}"
         env:
-          KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          KEY_ID_RAW: ${{ secrets.APP_STORE_KEY_ID }}
+          ISSUER_ID_RAW: ${{ secrets.APP_STORE_ISSUER_ID }}
           PRIVATE_KEY_CONTENT: ${{ secrets.APP_STORE_PRIVATE_KEY }}
         run: |
-          # 1. Configura a chave privada p8 na pasta segura exigida pelo altool
-          mkdir -p ~/.appstoreconnect/private_keys
-          KEY_FILE=~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
-          echo "$PRIVATE_KEY_CONTENT" > "$KEY_FILE"
-          chmod 600 "$KEY_FILE"
+          # 1. Sanitiza Key ID e Issuer ID removendo espaços e quebras de linha acidentais
+          KEY_ID=$(echo "$KEY_ID_RAW" | tr -d '[:space:]"')
+          ISSUER_ID=$(echo "$ISSUER_ID_RAW" | tr -d '[:space:]"')
 
-          # 2. Localiza o arquivo .ipa gerado
+          # 2. Configura a chave privada .p8 normalizando quebras de linha (evita problemas com CRLF do Windows)
+          mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys
+          node -e "
+            const fs = require('fs');
+            const key = process.env.PRIVATE_KEY_CONTENT.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim() + '\n';
+            fs.writeFileSync(process.env.HOME + '/.appstoreconnect/private_keys/AuthKey_' + '$KEY_ID' + '.p8', key);
+            fs.writeFileSync(process.env.HOME + '/.private_keys/AuthKey_' + '$KEY_ID' + '.p8', key);
+          "
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8 ~/.private_keys/AuthKey_${KEY_ID}.p8
+
+          # 3. Localiza o arquivo .ipa gerado
           IPA_PATH=$(find "$RUNNER_TEMP/output" -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
             echo "::error::Arquivo .ipa não encontrado em $RUNNER_TEMP/output"
             exit 1
           fi
 
-          echo "Enviando $IPA_PATH para o App Store Connect..."
+          echo "Enviando $IPA_PATH para o App Store Connect (Key ID: $KEY_ID)..."
           xcrun altool --upload-app \
                        -f "$IPA_PATH" \
                        -t ios \
