@@ -27,7 +27,7 @@ concurrency:
 jobs:
   build-ios:
     name: Compilar e Assinar iOS
-    runs-on: macos-14 # Runner oficial macOS com Apple Silicon (gratuito)
+    runs-on: macos-15 # Runner oficial macOS Sequoia com Xcode 16+ (SDK iOS recente exigido pela Apple)
 
     steps:
       - name: Checkout do código
