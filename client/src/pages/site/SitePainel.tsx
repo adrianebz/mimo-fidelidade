@@ -250,6 +250,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState("");
+  /** Busca de cliente dentro do leitor (aba manual). */
+  const [buscaLeitor, setBuscaLeitor] = useState("");
   const [isProcessingStamp, setIsProcessingStamp] = useState(false);
   const [lastStampResult, setLastStampResult] = useState<{
     cartaoId: string;
@@ -429,7 +431,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
           qrToken: `BOOMII:${slug}_${rc.id || rc.clienteId}_1:123456`,
         }));
         setCustomers(formatted);
-        setScannedCustomer((prev) => prev || formatted[0]);
+        // Nenhum cliente pré-selecionado: o leitor abre na câmera, e a busca
+        // manual escolhe o cliente explicitamente.
       } else {
         setCustomers([]);
         setScannedCustomer(null);
@@ -589,6 +592,11 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
         })
       );
 
+      // Cliente escolhido na busca manual: o cartão no leitor mostra o saldo novo.
+      setScannedCustomer((prev) =>
+        prev && qrText.includes(prev.id) ? { ...prev, stamps: result.selos, lastVisit: "Agora mesmo" } : prev
+      );
+
       const creditados = result.creditados ?? 1;
       const sufixoExcedente = result.excedente
         ? ` (${result.excedente} guardado${result.excedente > 1 ? 's' : ''} para o próximo ciclo)`
@@ -685,6 +693,20 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
       void desligarCamera();
     };
   }, [scannerOpen, scannerMode]);
+
+  /**
+   * Abre o leitor. Sem cliente: na câmera, para ler o QR. Com cliente (toque no
+   * cartão dele em Clientes): direto na aba manual, já com ele selecionado.
+   * Antes todo botão abria com o PRIMEIRO cliente da lista pré-selecionado,
+   * sem jeito de trocar.
+   */
+  const abrirLeitor = (cliente?: Customer | null) => {
+    setScannedCustomer(cliente || null);
+    setScannerMode(cliente ? "manual" : "camera");
+    setBuscaLeitor("");
+    setLastStampResult(null);
+    setScannerOpen(true);
+  };
 
   // Stamp update strictly via Customer QR Code scan
   const handleScanCustomerQR = (customerId: string) => {
@@ -811,7 +833,11 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const rotulos = menuLateralAberto || gavetaAberta;
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans antialiased">
+    // overflow-x-clip: nenhuma caixa mais larga que a tela (nome longo, selo,
+    // botão) pode mais arrastar a página para o lado no celular. "clip" e não
+    // "hidden": hidden criaria um contêiner de rolagem e quebraria o
+    // cabeçalho sticky.
+    <div className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-clip">
       {/* Toast alert */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 flex items-center gap-3 bg-card border border-primary/40 px-4 py-3 rounded-xl shadow-2xl animate-fade-in text-sm text-foreground">
@@ -878,8 +904,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             type="button"
             onClick={() => {
               setGavetaAberta(false);
-              setScannedCustomer(customers[0] || null);
-              setScannerOpen(true);
+              abrirLeitor();
             }}
             className="btn-boomii w-full py-3 px-0 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
             title="Ler QR Code do cartão do cliente para pontuar"
@@ -1114,7 +1139,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
       {/* ── CORPO PRINCIPAL ──
           pb-28 reserva a faixa ocupada pela barra inferior fixa do celular;
           sem isso o último cartão de cada aba fica escondido atrás dela. */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-28 lg:pb-10">
+      <main className="flex-1 w-full min-w-0 max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-28 lg:pb-10">
         {/* ═══════════════════════════════════════════════════════════════
             ABA 1: VISÃO GERAL
            ═══════════════════════════════════════════════════════════════ */}
@@ -1382,8 +1407,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   <button
                     type="button"
                     onClick={() => {
-                      setScannedCustomer(customers[0] || null);
-                      setScannerOpen(true);
+                      abrirLeitor();
                     }}
                     className="text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                   >
@@ -1755,8 +1779,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
               <button
                 type="button"
                 onClick={() => {
-                  setScannedCustomer(customers[0] || null);
-                  setScannerOpen(true);
+                  abrirLeitor();
                 }}
                 className="btn-boomii shrink-0 px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
               >
@@ -1816,7 +1839,20 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                       return (
                         <article
                           key={c.id}
-                          className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm space-y-3"
+                          // Toque no cartão = adicionar selos a este cliente
+                          // (leitor abre na busca manual, já com ele escolhido).
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Adicionar selos para ${c.name}`}
+                          onClick={() => abrirLeitor(c)}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              abrirLeitor(c);
+                            }
+                          }}
+                          className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm space-y-3 min-w-0 cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           <div className="flex items-start gap-3">
                             <div
@@ -1830,7 +1866,10 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                             </div>
                             <button
                               type="button"
-                              onClick={() => setClienteEmEdicao(c)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setClienteEmEdicao(c);
+                              }}
                               aria-label={`Editar dados de ${c.name}`}
                               title="Editar dados do cliente"
                               className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
@@ -1862,23 +1901,41 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                           {/* "Reenviar cartão" no lugar de "Ler QR Code" (a leitura
                               continua no botão do topo e na barra inferior): resolve
                               a troca de celular sem emitir cartão novo. */}
-                          <div className={`grid gap-2 ${isReady ? "grid-cols-2" : "grid-cols-1"}`}>
+                          <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"
-                              onClick={() => setClienteReenvio(c)}
-                              className="w-full rounded-xl py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setClienteReenvio(c);
+                              }}
+                              className="w-full rounded-xl border border-border/60 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>Reenviar cartão</span>
+                              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">Reenviar cartão</span>
                             </button>
-                            {isReady && (
+                            {isReady ? (
                               <button
                                 type="button"
-                                onClick={() => handleRedeemReward(c.id)}
-                                className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRedeemReward(c.id);
+                                }}
+                                className="btn-boomii w-full py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                               >
-                                <Gift className="w-3.5 h-3.5" />
+                                <Gift className="w-3.5 h-3.5 shrink-0" />
                                 <span>Resgatar</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirLeitor(c);
+                                }}
+                                className="btn-boomii w-full py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5 shrink-0" />
+                                <span>Selos</span>
                               </button>
                             )}
                           </div>
@@ -2051,7 +2108,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
 
             {/* Configurações de Notificações na Carteira */}
-            <div className="surface-panel p-6 rounded-2xl space-y-6">
+            <div className="surface-panel p-4 sm:p-6 rounded-2xl space-y-6 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/40 pb-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -2686,8 +2743,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
           <button
             type="button"
             onClick={() => {
-              setScannedCustomer(customers[0] || null);
-              setScannerOpen(true);
+              abrirLeitor();
             }}
             className="flex flex-col items-center gap-0.5 px-2 cursor-pointer"
             title="Ler QR Code do cartão do cliente para pontuar"
@@ -2842,46 +2898,158 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 </div>
               </div>
 
-              {/* VISÃO 2: DIGITAÇÃO MANUAL */}
-              {scannerMode === "manual" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-bold text-muted-foreground uppercase block mb-1">
-                      Código do QR ou Celular
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={manualCodeInput}
-                        onChange={(e) => setManualCodeInput(e.target.value)}
-                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm text-foreground font-mono focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => { processStamp(manualCodeInput); setManualCodeInput(""); }}
-                        className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-xl"
-                      >
-                        OK
-                      </button>
-                    </div>
-                  </div>
+              {/* VISÃO 2: BUSCA DE CLIENTE (combobox) ou código digitado.
+                  Com cliente escolhido, mostra o cartão dele e o botão de
+                  confirmar; "Trocar" volta para a busca. */}
+              {scannerMode === "manual" && (() => {
+                const termo = buscaLeitor.trim().toLowerCase();
+                const digitos = termo.replace(/\D/g, "");
+                const pareceCodigo = /^(boomii|mimo):/i.test(buscaLeitor.trim());
+                const sugestoes = termo && !pareceCodigo
+                  ? customers
+                      .filter(
+                        (c) =>
+                          c.name.toLowerCase().includes(termo) ||
+                          (c.email || "").toLowerCase().includes(termo) ||
+                          (c.passCode || "").toLowerCase().includes(termo) ||
+                          (digitos.length >= 3 && (c.phone || "").replace(/\D/g, "").includes(digitos))
+                      )
+                      .slice(0, 6)
+                  : [];
 
-                  {scannedCustomer && (
-                    <div className="mt-4 p-4 rounded-xl bg-card border border-border flex flex-col gap-3">
-                      <p className="text-xs text-muted-foreground">
-                        Cliente selecionado: <strong className="text-foreground">{scannedCustomer.name}</strong>
-                      </p>
+                if (scannedCustomer) {
+                  const total = scannedCustomer.totalStamps || 10;
+                  return (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-2xl bg-card border border-primary/40 space-y-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`h-10 w-10 shrink-0 rounded-full font-bold flex items-center justify-center text-xs ${scannedCustomer.avatarBg}`}>
+                            {scannedCustomer.initials}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-semibold text-foreground text-sm block truncate">{scannedCustomer.name}</span>
+                            <span className="text-xs text-muted-foreground block truncate">{scannedCustomer.email || scannedCustomer.phone}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScannedCustomer(null);
+                              setBuscaLeitor("");
+                            }}
+                            className="shrink-0 text-xs font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+                          >
+                            Trocar
+                          </button>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Selos atuais</span>
+                            <span className="font-bold text-foreground">{scannedCustomer.stamps}/{total}</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, (scannedCustomer.stamps / total) * 100)}%` }} />
+                          </div>
+                        </div>
+                      </div>
                       <button
                         type="button"
+                        disabled={isProcessingStamp}
                         onClick={() => handleScanCustomerQR(scannedCustomer.id)}
-                        className="btn-boomii w-full py-2.5 text-xs font-bold"
+                        className="btn-boomii w-full py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                       >
-                        Confirmar +1 Selo
+                        {isProcessingStamp ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                        <span>
+                          Confirmar +{selosPorLeitura} {selosPorLeitura === 1 ? "selo" : "selos"}
+                        </span>
                       </button>
                     </div>
-                  )}
-                </div>
-              )}
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    <label htmlFor="busca-leitor" className="text-[11px] font-bold text-muted-foreground uppercase block">
+                      Buscar cliente
+                    </label>
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <input
+                        id="busca-leitor"
+                        type="search"
+                        autoFocus
+                        autoComplete="off"
+                        value={buscaLeitor}
+                        onChange={(e) => setBuscaLeitor(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          if (sugestoes.length === 1) setScannedCustomer(sugestoes[0]);
+                          else if (pareceCodigo) {
+                            processStamp(buscaLeitor);
+                            setBuscaLeitor("");
+                          }
+                        }}
+                        placeholder="Nome, celular, e-mail ou código do passe"
+                        role="combobox"
+                        aria-expanded={sugestoes.length > 0}
+                        aria-controls="lista-busca-leitor"
+                        className="w-full bg-background border border-border rounded-xl pl-10 pr-3 py-3 text-sm text-foreground focus:outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    {sugestoes.length > 0 && (
+                      <ul id="lista-busca-leitor" role="listbox" className="rounded-xl border border-border bg-card divide-y divide-border/40 overflow-hidden">
+                        {sugestoes.map((c) => (
+                          <li key={c.id} role="option" aria-selected={false}>
+                            <button
+                              type="button"
+                              onClick={() => setScannedCustomer(c)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary transition-colors cursor-pointer min-w-0"
+                            >
+                              <div className={`h-8 w-8 shrink-0 rounded-full font-bold flex items-center justify-center text-[10px] ${c.avatarBg}`}>
+                                {c.initials}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-sm font-semibold text-foreground block truncate">{c.name}</span>
+                                <span className="text-[11px] text-muted-foreground block truncate">{c.passCode}</span>
+                              </div>
+                              <span className="shrink-0 text-xs font-bold text-foreground">
+                                {c.stamps}/{c.totalStamps || 10}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {termo && !pareceCodigo && sugestoes.length === 0 && (
+                      <p className="text-xs text-muted-foreground px-1">Nenhum cliente encontrado.</p>
+                    )}
+
+                    {pareceCodigo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          processStamp(buscaLeitor);
+                          setBuscaLeitor("");
+                        }}
+                        className="btn-boomii w-full py-2.5 text-xs font-bold cursor-pointer"
+                      >
+                        Usar o código digitado
+                      </button>
+                    )}
+
+                    {!termo && (
+                      <p className="text-[11px] text-muted-foreground px-1">
+                        Digite parte do nome ou do celular e escolha o cliente na lista.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* FEEDBACK */}
               {lastStampResult && (
@@ -3023,8 +3191,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
               type="button"
               onClick={() => {
                 setSelectedCustomer(null);
-                setScannedCustomer(selectedCustomer);
-                setScannerOpen(true);
+                abrirLeitor(selectedCustomer);
               }}
               className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5"
             >
