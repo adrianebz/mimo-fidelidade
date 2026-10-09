@@ -82,6 +82,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Links de reenvio do cartão: o token É a credencial. Só as Cloud
+    // Functions leem e gravam; ninguém lista nem lê pelo navegador.
+    match /reenvios/{token} {
+      allow read, write: if false;
+    }
+
     // Trilha de auditoria: só o Admin SDK grava; ninguém reescreve.
     match /auditoria/{id} {
       allow read, write: if false;

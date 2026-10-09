@@ -825,6 +825,60 @@ export async function excluirCliente(lojaId: string, clienteId: string): Promise
   }
 }
 
+/** Erros das callables com mensagem já em português vinda do servidor. */
+function mensagemDoServidor(err: any, padrao: string): string {
+  const codigo = String(err?.code || '').replace('functions/', '');
+  const conhecidos = [
+    'invalid-argument', 'permission-denied', 'not-found', 'unauthenticated',
+    'failed-precondition', 'deadline-exceeded',
+  ];
+  return conhecidos.includes(codigo) && err?.message ? err.message : padrao;
+}
+
+/**
+ * Gera o link para o cliente adicionar de novo o MESMO cartão (troca de
+ * aparelho). Só o lojista logado gera; o link vale alguns dias.
+ */
+export async function gerarLinkReenvio(
+  lojaId: string,
+  clienteId: string
+): Promise<{ sucesso: boolean; token?: string; expiraEm?: number; dias?: number; erro?: string }> {
+  try {
+    const fn = httpsCallable<{ lojaId: string; clienteId: string }, { token: string; expiraEm: number; dias: number }>(
+      functions,
+      'gerarLinkReenvio'
+    );
+    const { data } = await fn({ lojaId, clienteId });
+    return { sucesso: true, ...data };
+  } catch (err: any) {
+    return { sucesso: false, erro: mensagemDoServidor(err, 'Não foi possível gerar o link agora. Tente de novo.') };
+  }
+}
+
+export interface CartaoReenviado {
+  lojaNome: string;
+  corDestaque: string | null;
+  primeiroNome: string;
+  selos: number;
+  meta: number;
+  saveUrl: string;
+  applePassUrl: string;
+  expiraEm: number;
+}
+
+/** Página pública /r/{token}: busca os links das carteiras do cartão. */
+export async function abrirLinkReenvio(
+  token: string
+): Promise<{ sucesso: true; cartao: CartaoReenviado } | { sucesso: false; erro: string }> {
+  try {
+    const fn = httpsCallable<{ token: string }, CartaoReenviado>(functions, 'abrirLinkReenvio');
+    const { data } = await fn({ token });
+    return { sucesso: true, cartao: data };
+  } catch (err: any) {
+    return { sucesso: false, erro: mensagemDoServidor(err, 'Não foi possível abrir o seu cartão agora. Tente de novo.') };
+  }
+}
+
 /**
  * Carrega clientes reais cadastrados na subcoleção de um lojista
  */

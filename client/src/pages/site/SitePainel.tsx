@@ -56,9 +56,11 @@ import {
   LayoutGrid,
   MoreHorizontal,
   Menu,
+  RotateCcw,
 } from "lucide-react";
 import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
+import { ReenviarCartaoModal } from "../../components/ReenviarCartaoModal.js";
 import { urlCadastroCliente } from "../../siteConfig.js";
 
 type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos";
@@ -208,6 +210,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const [clienteEmEdicao, setClienteEmEdicao] = useState<Customer | null>(null);
   const [buscaClientes, setBuscaClientes] = useState("");
   const [verTodosAniversarios, setVerTodosAniversarios] = useState(false);
+  /** Cliente para quem o lojista está gerando o link de reenvio do cartão. */
+  const [clienteReenvio, setClienteReenvio] = useState<Customer | null>(null);
   /**
    * Barra lateral do desktop. A preferência fica salva porque quem trabalha em
    * tela pequena costuma querê-la recolhida o tempo todo — reabrir a cada
@@ -1855,28 +1859,29 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                             </div>
                           </div>
 
-                          {isReady ? (
+                          {/* "Reenviar cartão" no lugar de "Ler QR Code" (a leitura
+                              continua no botão do topo e na barra inferior): resolve
+                              a troca de celular sem emitir cartão novo. */}
+                          <div className={`grid gap-2 ${isReady ? "grid-cols-2" : "grid-cols-1"}`}>
                             <button
                               type="button"
-                              onClick={() => handleRedeemReward(c.id)}
-                              className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Gift className="w-3.5 h-3.5" />
-                              <span>Resgatar recompensa</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setScannedCustomer(c);
-                                setScannerOpen(true);
-                              }}
+                              onClick={() => setClienteReenvio(c)}
                               className="w-full rounded-xl py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <Scan className="w-3.5 h-3.5" />
-                              <span>Ler QR Code</span>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Reenviar cartão</span>
                             </button>
-                          )}
+                            {isReady && (
+                              <button
+                                type="button"
+                                onClick={() => handleRedeemReward(c.id)}
+                                className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Gift className="w-3.5 h-3.5" />
+                                <span>Resgatar</span>
+                              </button>
+                            )}
+                          </div>
                         </article>
                       );
                     })}
@@ -3102,6 +3107,16 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
           </div>
         </div>
+      )}
+
+      {/* Pop-up de reenvio do cartão (cliente trocou de celular) */}
+      {clienteReenvio && (
+        <ReenviarCartaoModal
+          lojaId={currentSlug}
+          lojaNome={cardConfig.storeName || "a loja"}
+          cliente={{ id: clienteReenvio.id, name: clienteReenvio.name, phone: clienteReenvio.phone || "" }}
+          onFechar={() => setClienteReenvio(null)}
+        />
       )}
 
       {/* Pop-up de edição dos dados do cliente */}

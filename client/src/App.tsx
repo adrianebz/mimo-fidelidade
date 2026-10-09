@@ -12,6 +12,7 @@ import { SiteLogin } from './pages/site/SiteLogin.js';
 import { SitePainel } from './pages/site/SitePainel.js';
 import { AdminContas } from './pages/site/AdminContas.js';
 import { CustomerEnrollSlug } from './pages/CustomerEnrollSlug.js';
+import { ReenvioCartao } from './pages/ReenvioCartao.js';
 import { CAMINHO_AREA_LOJISTA, CAMINHO_AREA_LOJISTA_LEGADO } from './siteConfig.js';
 
 /**
@@ -123,7 +124,7 @@ export const App: React.FC = () => {
   });
 
   useEffect(() => {
-    if (currentPath.startsWith('/c/')) return;
+    if (currentPath.startsWith('/c/') || currentPath.startsWith('/r/')) return;
     if (isAppMode && siteTab !== 'painel' && siteTab !== 'login' && siteTab !== 'admin') {
       setSiteTab('painel');
       return;
@@ -185,6 +186,11 @@ export const App: React.FC = () => {
   };
 
   // Se a rota atual for o cadastro público do cliente (/c/{slug})
+  // Reenvio do cartão ao cliente que trocou de aparelho (/r/{token}): pública.
+  if (currentPath.startsWith('/r/')) {
+    return <ReenvioCartao />;
+  }
+
   if (currentPath.startsWith('/c/')) {
     return (
       <CustomerEnrollSlug

@@ -27,6 +27,11 @@ export function urlCadastroCliente(slug: string): string {
   return `${origemPublica()}/c/${slug}`;
 }
 
+/** Link que o cliente abre para adicionar de novo o cartão (troca de aparelho). */
+export function urlReenvioCartao(token: string): string {
+  return `${origemPublica()}/r/${token}`;
+}
+
 /** Caminho oficial da área do lojista. */
 export const CAMINHO_AREA_LOJISTA = '/arealojista';
 

@@ -1378,6 +1378,106 @@ exports.excluirCliente = onCall(
 );
 
 /**
+ * Reenvio do cartão para um cliente que trocou de aparelho.
+ *
+ * Antes a saída era emitir um cartão novo, e o cliente perdia o histórico.
+ * O lojista gera aqui um link de uso exclusivo daquele cliente; o link abre
+ * a página /r/{token}, que oferece "Adicionar à Apple/Google Wallet" do MESMO
+ * cartão — mesmos selos, mesmo ciclo.
+ *
+ * Segurança: só o dono da loja (ou admin) gera; o token é aleatório (192
+ * bits), vale REENVIO_DIAS dias e a página só revela o primeiro nome. Não
+ * reabre a falha do cadastro: quem não tem o link não chega ao cartão.
+ */
+const REENVIO_DIAS = 7;
+
+exports.gerarLinkReenvio = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const { lojaId: lojaIdParam, clienteId } = req.data || {};
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'reenviar o cartão de');
+  if (!lojaId || !clienteId) {
+    throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
+  }
+
+  const db = admin.firestore();
+  const cartoesSnap = await db.collection('cartoes')
+    .where('lojaId', '==', lojaId)
+    .where('clienteId', '==', String(clienteId))
+    .get();
+  const cartao = cartoesSnap.docs.find((d) => ['ativo', 'completo'].includes(d.get('status')));
+  if (!cartao) {
+    throw new HttpsError('failed-precondition', 'Este cliente não tem um cartão ativo para reenviar.');
+  }
+
+  const token = crypto.randomBytes(24).toString('base64url');
+  const expiraEm = Date.now() + REENVIO_DIAS * 24 * 60 * 60 * 1000;
+  await db.doc(`reenvios/${token}`).set({
+    cartaoId: cartao.id,
+    lojaId,
+    clienteId: String(clienteId),
+    expiraEm,
+    criadoPor: req.auth.uid,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    usos: 0,
+  });
+  await db.collection('auditoria').add({
+    tipo: 'cartao_reenviado',
+    lojaId,
+    clienteId: String(clienteId),
+    cartaoId: cartao.id,
+    por: req.auth.uid,
+    papel: claims.role,
+    em: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { token, expiraEm, dias: REENVIO_DIAS };
+});
+
+/** Página pública /r/{token}: devolve os links das carteiras do cartão. */
+exports.abrirLinkReenvio = onCall(
+  { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
+  async (req) => {
+    const token = String(req.data?.token || '');
+    if (!/^[A-Za-z0-9_-]{32}$/.test(token)) {
+      throw new HttpsError('not-found', 'Link inválido.');
+    }
+    const db = admin.firestore();
+    const reenvioRef = db.doc(`reenvios/${token}`);
+    const reenvio = await reenvioRef.get();
+    if (!reenvio.exists) throw new HttpsError('not-found', 'Link inválido.');
+    if (reenvio.get('expiraEm') < Date.now()) {
+      throw new HttpsError('deadline-exceeded', 'Este link expirou. Peça um novo na loja.');
+    }
+
+    const cartaoRef = db.doc(`cartoes/${reenvio.get('cartaoId')}`);
+    const cartaoSnap = await cartaoRef.get();
+    const cartao = cartaoSnap.data();
+    if (!cartaoSnap.exists || !['ativo', 'completo'].includes(cartao?.status)) {
+      throw new HttpsError('failed-precondition', 'Este cartão não está mais ativo. Fale com a loja.');
+    }
+    const loja = (await db.doc(`lojistas/${cartao.lojaId}`).get()).data() || {};
+
+    const saveUrl = await gerarSaveUrl(cartaoSnap, loja, null);
+    const appleToken = await apple.garantirAuthToken(cartaoRef, cartao);
+    await reenvioRef.update({
+      usos: admin.firestore.FieldValue.increment(1),
+      ultimoUsoEm: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      lojaNome: loja.nome || 'Loja',
+      corDestaque: loja.design?.colors?.accent || loja.layout?.accentColor || null,
+      primeiroNome: String(cartao.clienteNome || '').trim().split(/\s+/)[0] || '',
+      selos: cartao.selos || 0,
+      meta: cartao.meta || 10,
+      saveUrl,
+      applePassUrl: apple.urlDownloadPasse(cartaoSnap.id, appleToken),
+      expiraEm: reenvio.get('expiraEm'),
+    };
+  }
+);
+
+/**
  * Tira de uma vez os PINs de operador que ainda estão no documento público
  * das lojas (só admin). Sem isso eles saem loja a loja, no primeiro uso.
  */
