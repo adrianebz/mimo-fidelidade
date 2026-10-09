@@ -120,6 +120,8 @@ function aniversarioParaExibir(raw?: string | null, mmdd?: string | null): strin
 }
 
 const DIAS_AVISO_ANIVERSARIO = 7;
+/** Janela da lista "Próximos aniversários" na aba Brindes. */
+const DIAS_LISTA_ANIVERSARIO = 30;
 
 /** Dias até o próximo aniversário (0 = hoje). `null` se não houver data. */
 function diasAteAniversario(raw?: string | null, hoje = new Date()): number | null {
@@ -205,6 +207,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   /** Cliente aberto no pop-up de edição. */
   const [clienteEmEdicao, setClienteEmEdicao] = useState<Customer | null>(null);
   const [buscaClientes, setBuscaClientes] = useState("");
+  const [verTodosAniversarios, setVerTodosAniversarios] = useState(false);
   /**
    * Barra lateral do desktop. A preferência fica salva porque quem trabalha em
    * tela pequena costuma querê-la recolhida o tempo todo — reabrir a cada
@@ -1901,57 +1904,93 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="surface-panel p-6 rounded-2xl space-y-4">
-                <div className="flex items-center justify-between border-b border-border/40 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    <h2 className="text-base font-bold text-foreground">Aniversariantes Cadastrados</h2>
+              {/* Próximos aniversários. Antes listava TODOS os clientes com data,
+                  cada um com "Enviar Push" — uma lista sem fim no celular, e o
+                  botão mandava "feliz aniversário" a qualquer época do ano.
+                  Agora: só os próximos 30 dias, do mais perto ao mais longe;
+                  o envio manual só existe no dia (o automático já sai às 8h). */}
+              {(() => {
+                const todos = customers
+                  .map((c) => ({ c, dias: diasAteAniversario(c.birthdayRaw) }))
+                  .filter((a): a is { c: Customer; dias: number } => a.dias !== null)
+                  .sort((a, b) => a.dias - b.dias);
+                const proximos = todos.filter((a) => a.dias <= DIAS_LISTA_ANIVERSARIO);
+                const lista = verTodosAniversarios ? todos : proximos;
+                return (
+              <div className="surface-panel p-4 sm:p-6 rounded-2xl space-y-4 min-w-0">
+                <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Calendar className="w-4 h-4 text-primary shrink-0" />
+                    <h2 className="text-base font-bold text-foreground truncate">Próximos aniversários</h2>
                   </div>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
-                    {aniversariantes.length} {aniversariantes.length === 1 ? 'cadastrado' : 'cadastrados'}
+                  <span className="shrink-0 text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold whitespace-nowrap">
+                    {proximos.length} em {DIAS_LISTA_ANIVERSARIO} dias
                   </span>
                 </div>
 
-                <div className="space-y-3">
-                  {aniversariantes.length === 0 ? (
-                    <div className="p-6 rounded-xl bg-card border border-border/40 text-center space-y-2">
+                {bonusAniversario > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    No dia do aniversário, o cartão recebe {bonusAniversario} {bonusAniversario === 1 ? 'selo' : 'selos'} de presente e o aviso sai automaticamente às 8h.
+                  </p>
+                )}
+
+                <div className="divide-y divide-border/40">
+                  {lista.length === 0 ? (
+                    <div className="py-6 text-center space-y-1.5">
                       <Calendar className="w-6 h-6 text-muted-foreground mx-auto" />
-                      <p className="text-xs font-semibold text-foreground">Nenhum aniversariante com data registrada</p>
-                      <p className="text-[11px] text-muted-foreground">Quando seus clientes informarem o aniversário no cadastro do cartão, eles aparecerão aqui para o envio de recompensas.</p>
+                      <p className="text-xs font-semibold text-foreground">
+                        {todos.length === 0
+                          ? 'Nenhum cliente com aniversário cadastrado'
+                          : `Nenhum aniversário nos próximos ${DIAS_LISTA_ANIVERSARIO} dias`}
+                      </p>
                     </div>
                   ) : (
-                    aniversariantes.map((c) => (
-                      <div key={c.id} className="p-4 rounded-xl bg-card border border-border/60 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-10 w-10 rounded-full font-bold flex items-center justify-center text-xs ${c.avatarBg}`}>
-                            {c.initials}
-                          </div>
-                          <div>
-                            <span className="font-bold text-foreground text-sm block">{c.name}</span>
-                            <span className="text-xs text-primary font-semibold">Aniversário: {c.birthday}</span>
-                          </div>
+                    lista.map(({ c, dias }) => (
+                      <div key={c.id} className="py-2.5 flex items-center gap-3 min-w-0">
+                        <div className={`h-9 w-9 shrink-0 rounded-full font-bold flex items-center justify-center text-[11px] ${c.avatarBg}`}>
+                          {c.initials}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSendNotification(c.id, c.name, "aniversario")}
-                          className="btn-boomii py-1.5 px-3 text-xs font-bold cursor-pointer"
-                        >
-                          <Send className="w-3 h-3 mr-1" />
-                          <span>Enviar Push</span>
-                        </button>
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold text-foreground text-sm block truncate">{c.name}</span>
+                          <span className={`text-xs ${dias === 0 ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                            {dias === 0 ? 'Hoje 🎂' : dias === 1 ? 'Amanhã' : `Em ${dias} dias`} · {c.birthday}
+                          </span>
+                        </div>
+                        {dias === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleSendNotification(c.id, c.name, "aniversario")}
+                            className="btn-boomii shrink-0 py-1.5 px-3 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>Parabéns</span>
+                          </button>
+                        )}
                       </div>
                     ))
                   )}
                 </div>
-              </div>
 
-              <div className="surface-panel p-6 rounded-2xl space-y-4">
-                <div className="flex items-center justify-between border-b border-border/40 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Gift className="w-4 h-4 text-emerald-400" />
-                    <h2 className="text-base font-bold text-foreground">Recompensas Prontas para Resgate</h2>
+                {todos.length > proximos.length && (
+                  <button
+                    type="button"
+                    onClick={() => setVerTodosAniversarios((v) => !v)}
+                    className="w-full rounded-xl border border-border/60 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    {verTodosAniversarios ? `Mostrar só os próximos ${DIAS_LISTA_ANIVERSARIO} dias` : `Ver todos os ${todos.length} aniversários`}
+                  </button>
+                )}
+              </div>
+                );
+              })()}
+
+              <div className="surface-panel p-4 sm:p-6 rounded-2xl space-y-4 min-w-0">
+                <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Gift className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <h2 className="text-base font-bold text-foreground truncate">Prontas para resgate</h2>
                   </div>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold">
+                  <span className="shrink-0 text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold whitespace-nowrap">
                     {recompensasPendentes.length} {recompensasPendentes.length === 1 ? 'pendente' : 'pendentes'}
                   </span>
                 </div>
@@ -1964,37 +2003,39 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                       <p className="text-[11px] text-muted-foreground">Clientes que completarem a cartela de 10 selos aparecerão aqui para entrega da recompensa.</p>
                     </div>
                   ) : (
+                    // Empilhado: identificação em cima, ações embaixo. Antes tudo
+                    // numa linha só — no celular o "Resgatar" saía do cartão e
+                    // alargava a página inteira.
                     recompensasPendentes.map((c) => (
-                      <div key={c.id} className="p-4 rounded-xl bg-card border border-emerald-500/30 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-10 w-10 rounded-full font-bold flex items-center justify-center text-xs ${c.avatarBg}`}>
+                      <div key={c.id} className="p-3.5 rounded-xl bg-card border border-emerald-500/30 space-y-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`h-9 w-9 shrink-0 rounded-full font-bold flex items-center justify-center text-[11px] ${c.avatarBg}`}>
                             {c.initials}
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-foreground text-sm">{c.name}</span>
-                              <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.2 rounded font-bold">
-                                {c.stamps}/{c.totalStamps || 10} Selos
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground">Boomii: {cardConfig.rewardTitle}</span>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-semibold text-foreground text-sm block truncate">{c.name}</span>
+                            <span className="text-xs text-muted-foreground block truncate">{cardConfig.rewardTitle}</span>
                           </div>
+                          <span className="shrink-0 text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                            {c.stamps}/{c.totalStamps || 10} selos
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => handleSendNotification(c.id, c.name, "recompensa")}
-                            className="btn-boomii-ghost py-1.5 px-3 text-xs font-bold cursor-pointer"
+                            className="btn-boomii-ghost py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <Bell className="w-3 h-3 mr-1" />
+                            <Bell className="w-3.5 h-3.5" />
                             <span>Lembrar</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleRedeemReward(c.id)}
-                            className="btn-boomii py-1.5 px-3 text-xs font-bold cursor-pointer"
+                            className="btn-boomii py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <span>Resgatar 🎁</span>
+                            <Gift className="w-3.5 h-3.5" />
+                            <span>Resgatar</span>
                           </button>
                         </div>
                       </div>
