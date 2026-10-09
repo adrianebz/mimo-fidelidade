@@ -57,6 +57,7 @@ import {
   MoreHorizontal,
   Menu,
   RotateCcw,
+  MoreVertical,
 } from "lucide-react";
 import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
@@ -212,6 +213,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const [verTodosAniversarios, setVerTodosAniversarios] = useState(false);
   /** Cliente para quem o lojista está gerando o link de reenvio do cartão. */
   const [clienteReenvio, setClienteReenvio] = useState<Customer | null>(null);
+  /** Id do cliente cujo menu ⋮ (Editar / Reenviar) está aberto. */
+  const [menuClienteAberto, setMenuClienteAberto] = useState<string | null>(null);
   /**
    * Barra lateral do desktop. A preferência fica salva porque quem trabalha em
    * tela pequena costuma querê-la recolhida o tempo todo — reabrir a cada
@@ -1839,20 +1842,28 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                       return (
                         <article
                           key={c.id}
-                          // Toque no cartão = adicionar selos a este cliente
-                          // (leitor abre na busca manual, já com ele escolhido).
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Adicionar selos para ${c.name}`}
-                          onClick={() => abrirLeitor(c)}
-                          onKeyDown={(e) => {
-                            if (e.target !== e.currentTarget) return;
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              abrirLeitor(c);
-                            }
-                          }}
-                          className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm space-y-3 min-w-0 cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          // Toque no cartão = adicionar selos (leitor abre na
+                          // busca manual, já com o cliente escolhido). Cartela
+                          // completa: o toque não faz nada — resgatar é só pelo
+                          // botão, para não haver resgate por toque acidental.
+                          {...(!isReady && {
+                            role: "button",
+                            tabIndex: 0,
+                            "aria-label": `Adicionar selos para ${c.name}`,
+                            onClick: () => abrirLeitor(c),
+                            onKeyDown: (e: React.KeyboardEvent) => {
+                              if (e.target !== e.currentTarget) return;
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                abrirLeitor(c);
+                              }
+                            },
+                          })}
+                          className={`relative rounded-2xl border bg-card p-4 shadow-sm space-y-3 min-w-0 transition-colors ${
+                            isReady
+                              ? "border-primary/40"
+                              : "border-border/60 cursor-pointer hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          }`}
                         >
                           <div className="flex items-start gap-3">
                             <div
@@ -1864,19 +1875,67 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                               <h3 className="font-semibold text-foreground truncate">{c.name}</h3>
                               <p className="text-xs text-muted-foreground truncate">{c.email || c.phone}</p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setClienteEmEdicao(c);
-                              }}
-                              aria-label={`Editar dados de ${c.name}`}
-                              title="Editar dados do cliente"
-                              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Editar</span>
-                            </button>
+
+                            {/* Ações de gestão, raras, discretas no ⋮. */}
+                            <div className="relative shrink-0 -mr-1.5 -mt-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuClienteAberto((id) => (id === c.id ? null : c.id));
+                                }}
+                                aria-label={`Mais opções para ${c.name}`}
+                                aria-haspopup="menu"
+                                aria-expanded={menuClienteAberto === c.id}
+                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {menuClienteAberto === c.id && (
+                                <>
+                                  {/* Toque fora fecha o menu sem acionar o cartão. */}
+                                  <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMenuClienteAberto(null);
+                                    }}
+                                  />
+                                  <div
+                                    role="menu"
+                                    className="absolute right-0 top-9 z-50 w-48 rounded-xl border border-border bg-popover p-1 shadow-2xl animate-fade-in"
+                                  >
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuClienteAberto(null);
+                                        setClienteEmEdicao(c);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                                    >
+                                      <Edit3 className="w-4 h-4 text-muted-foreground" />
+                                      <span>Editar dados</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuClienteAberto(null);
+                                        setClienteReenvio(c);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                                    >
+                                      <RotateCcw className="w-4 h-4 text-muted-foreground" />
+                                      <span>Reenviar cartão</span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
 
                           <div className="space-y-1.5">
@@ -1901,44 +1960,33 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                           {/* "Reenviar cartão" no lugar de "Ler QR Code" (a leitura
                               continua no botão do topo e na barra inferior): resolve
                               a troca de celular sem emitir cartão novo. */}
-                          <div className="grid grid-cols-2 gap-2">
+                          {/* Uma ação só, a certa para o momento: acumulando →
+                              adicionar selos; cartela completa → resgatar. */}
+                          {isReady ? (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setClienteReenvio(c);
+                                handleRedeemReward(c.id);
                               }}
-                              className="w-full rounded-xl border border-border/60 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">Reenviar cartão</span>
+                              <Gift className="w-3.5 h-3.5 shrink-0" />
+                              <span>Resgatar recompensa</span>
                             </button>
-                            {isReady ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRedeemReward(c.id);
-                                }}
-                                className="btn-boomii w-full py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <Gift className="w-3.5 h-3.5 shrink-0" />
-                                <span>Resgatar</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  abrirLeitor(c);
-                                }}
-                                className="btn-boomii w-full py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <Plus className="w-3.5 h-3.5 shrink-0" />
-                                <span>Selos</span>
-                              </button>
-                            )}
-                          </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirLeitor(c);
+                              }}
+                              className="w-full rounded-xl border border-primary/40 bg-primary/10 py-2.5 text-xs font-bold text-primary hover:bg-primary hover:text-primary-foreground transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 shrink-0" />
+                              <span>Adicionar selos</span>
+                            </button>
+                          )}
                         </article>
                       );
                     })}
