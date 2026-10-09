@@ -100,6 +100,8 @@ interface Customer {
   stamps: number;
   totalStamps: number;
   lastVisit: string;
+  /** Data da última visita em ms (0 = nunca carimbou) — ordena "Clientes recentes". */
+  ultimaVisitaMs?: number;
   birthday: string;
   /** Aniversário como gravado ("AAAA-MM-DD", "MM-DD" ou vazio) — base da edição. */
   birthdayRaw?: string;
@@ -236,7 +238,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
       // Sem persistência a preferência ainda vale para esta sessão.
     }
   }, [menuLateralAberto]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [financialStatus, setFinancialStatus] = useState<"adimplente" | "inadimplente">("adimplente");
 
@@ -327,8 +328,35 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const totalClientes = customers.length;
   const totalSelos = customers.reduce((sum, c) => sum + (c.stamps || 0), 0);
   const recompensasProntas = customers.filter((c) => (c.stamps || 0) >= (c.totalStamps || 10)).length;
-  const clientesRetorno = customers.filter((c) => (c.stamps || 0) > 1).length;
+  // "Voltaram": clientes com 2+ selos no ciclo atual, ou seja, vieram pelo menos
+  // duas vezes. É uma aproximação (o ciclo zera no resgate) e por isso o texto
+  // da tela diz exatamente o que conta, sem prometer "taxa de retorno" nem
+  // tendência ("+81%") que não existem nos dados.
+  const clientesRetorno = customers.filter((c) => (c.stamps || 0) >= 2).length;
   const taxaRetorno = totalClientes > 0 ? Math.round((clientesRetorno / totalClientes) * 100) : 0;
+
+  // Mais recentes primeiro (quem nunca carimbou vai para o fim).
+  const clientesRecentes = [...customers]
+    .sort((a, b) => (b.ultimaVisitaMs || 0) - (a.ultimaVisitaMs || 0))
+    .slice(0, 5);
+
+  // Onde a base está na cartela — no lugar do gráfico que repetia o mesmo %.
+  const faixasProgresso = (() => {
+    const faixa = { semSelos: 0, acumulando: 0, quaseLa: 0, prontas: 0 };
+    customers.forEach((c) => {
+      const r = (c.stamps || 0) / (c.totalStamps || 10);
+      if (r >= 1) faixa.prontas++;
+      else if (r >= 0.7) faixa.quaseLa++;
+      else if (r > 0) faixa.acumulando++;
+      else faixa.semSelos++;
+    });
+    return faixa;
+  })();
+
+  const saudacao = (() => {
+    const h = new Date().getHours();
+    return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  })();
   const aniversariantes = customers.filter((c) => c.birthday && c.birthday !== "Não informado");
   const recompensasPendentes = customers.filter((c) => (c.stamps || 0) >= (c.totalStamps || 10));
 
@@ -426,6 +454,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
           stamps: rc.stamps ?? rc.selos ?? 0,
           totalStamps: rc.meta || 10,
           lastVisit: formatarUltimaVisita(rc.lastVisit),
+          ultimaVisitaMs: Date.parse(rc.lastVisit || '') || 0,
           birthday: aniversarioParaExibir(rc.aniversario, rc.aniversarioMMDD),
           birthdayRaw: rc.aniversario || rc.aniversarioMMDD || '',
           passCode: codigoDoPasse(slug, rc.id || rc.clienteId),
@@ -588,7 +617,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             return {
               ...c,
               stamps: result.selos,
-              lastVisit: "Agora mesmo via QR",
+              lastVisit: "Agora mesmo",
+              ultimaVisitaMs: Date.now(),
             };
           }
           return c;
@@ -1154,7 +1184,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </span>
                 <h1 className="mt-2 text-3xl sm:text-4xl font-black text-foreground tracking-tight">
-                  Bom dia
+                  {saudacao}
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Acompanhe o que está acontecendo na {cardConfig.storeName} hoje.
@@ -1172,7 +1202,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                      Cadastro Público de Clientes (Etapa 2)
+                      Link de cadastro de clientes
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 font-mono">
@@ -1238,277 +1268,210 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
               </div>
             )}
 
-            {/* 4 KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="surface-panel p-5 rounded-2xl relative overflow-hidden group hover:border-primary/40 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                    <Users className="w-5 h-5" />
+            {/* Indicadores. Antes cada um tinha um selo de "tendência" (+21
+                ativos, +81%) que só repetia o próprio número — não há período
+                anterior para comparar. Agora cada cartão diz o que conta. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {[
+                {
+                  Icone: Users,
+                  cor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+                  rotulo: "Clientes",
+                  valor: String(totalClientes),
+                  detalhe: "cadastrados",
+                },
+                {
+                  Icone: Award,
+                  cor: "text-primary bg-primary/10 border-primary/20",
+                  rotulo: "Selos nos cartões",
+                  valor: String(totalSelos),
+                  detalhe: "acumulados agora",
+                },
+                {
+                  Icone: Gift,
+                  cor: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+                  rotulo: "Recompensas prontas",
+                  valor: String(recompensasProntas),
+                  detalhe: "aguardando resgate",
+                  acao: recompensasProntas > 0 ? () => setCurrentTab("aniversarios") : undefined,
+                },
+                {
+                  Icone: TrendingUp,
+                  cor: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+                  rotulo: "Voltaram",
+                  valor: `${taxaRetorno}%`,
+                  detalhe: `${clientesRetorno} com 2+ selos no ciclo`,
+                },
+              ].map(({ Icone, cor, rotulo, valor, detalhe, acao }) => {
+                const conteudo = (
+                  <>
+                    <div className={`h-9 w-9 rounded-xl border flex items-center justify-center ${cor}`}>
+                      <Icone className="w-4 h-4" />
+                    </div>
+                    <div className="mt-3 min-w-0">
+                      <span className="text-xs text-muted-foreground font-medium block truncate">{rotulo}</span>
+                      <div className="text-2xl sm:text-3xl font-black text-foreground mt-0.5 tabular-nums">{valor}</div>
+                      <span className="text-[11px] text-muted-foreground block leading-snug">{detalhe}</span>
+                    </div>
+                  </>
+                );
+                const classe = "surface-panel p-4 sm:p-5 rounded-2xl text-left min-w-0";
+                return acao ? (
+                  <button
+                    key={rotulo}
+                    type="button"
+                    onClick={acao}
+                    className={`${classe} hover:border-primary/40 transition-colors cursor-pointer`}
+                  >
+                    {conteudo}
+                  </button>
+                ) : (
+                  <div key={rotulo} className={classe}>
+                    {conteudo}
                   </div>
-                  <span className="text-xs font-semibold text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-500/10">
-                    {totalClientes > 0 ? `+${totalClientes} ativos` : 'Base inicial'}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <span className="text-xs text-muted-foreground font-medium">Clientes ativos</span>
-                  <div className="text-3xl font-black text-foreground mt-1">{totalClientes}</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">cadastrados no sistema</span>
-                </div>
-              </div>
-
-              <div className="surface-panel p-5 rounded-2xl relative overflow-hidden group hover:border-primary/40 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
-                    <Award className="w-5 h-5" />
-                  </div>
-                  <span className="text-xs font-semibold text-primary px-2 py-0.5 rounded-full bg-primary/10">
-                    {totalSelos > 0 ? `+${totalSelos} selos` : '0 selos'}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <span className="text-xs text-muted-foreground font-medium">Selos no ciclo</span>
-                  <div className="text-3xl font-black text-foreground mt-1">{totalSelos}</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">concedidos aos clientes</span>
-                </div>
-              </div>
-
-              <div className="surface-panel p-5 rounded-2xl relative overflow-hidden group hover:border-primary/40 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="h-10 w-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
-                    <Gift className="w-5 h-5" />
-                  </div>
-                  <span className="text-xs font-semibold text-amber-400 px-2 py-0.5 rounded-full bg-amber-500/10">
-                    {recompensasProntas > 0 ? `${recompensasProntas} prontas` : '0 pendentes'}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <span className="text-xs text-muted-foreground font-medium">Recompensas prontas</span>
-                  <div className="text-3xl font-black text-foreground mt-1">{recompensasProntas}</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">aguardando resgate</span>
-                </div>
-              </div>
-
-              <div className="surface-panel p-5 rounded-2xl relative overflow-hidden group hover:border-primary/40 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="h-10 w-10 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
-                  <span className="text-xs font-semibold text-sky-400 px-2 py-0.5 rounded-full bg-sky-500/10">
-                    {taxaRetorno > 0 ? `+${taxaRetorno}%` : '0%'}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <span className="text-xs text-muted-foreground font-medium">Taxa de retorno</span>
-                  <div className="text-3xl font-black text-foreground mt-1">{taxaRetorno}%</div>
-                  <span className="text-[11px] text-muted-foreground mt-1 block">clientes recorrentes</span>
-                </div>
-              </div>
+                );
+              })}
             </div>
-
-            {/* Clientes recentes & Donut chart */}
+            {/* Clientes recentes & progresso da base */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-7 surface-panel p-6 rounded-2xl flex flex-col justify-between space-y-6">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <span className="label-eyebrow text-muted-foreground">MOVIMENTAÇÃO</span>
-                      <h2 className="text-xl font-bold text-foreground mt-1">Clientes recentes</h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentTab("clientes")}
-                      className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Ver todos ({customers.length})</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+              <div className="lg:col-span-7 surface-panel p-4 sm:p-6 rounded-2xl min-w-0">
+                <div className="flex items-end justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <span className="label-eyebrow text-muted-foreground">Movimentação</span>
+                    <h2 className="text-xl font-bold text-foreground mt-1">Clientes recentes</h2>
                   </div>
-
-                  {customers.length === 0 ? (
-                    <div className="py-10 text-center space-y-3">
-                      <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
-                        <Users className="w-6 h-6" />
-                      </div>
-                      <p className="font-bold text-foreground text-sm">Nenhum cliente cadastrado ainda</p>
-                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                        Envie o link do balcão <strong>/c/{currentSlug}</strong> para os clientes cadastrarem seus cartões e começarem a pontuar.
-                      </p>
-                      <div className="pt-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const url = urlCadastroCliente(currentSlug);
-                            navigator.clipboard.writeText(url);
-                            showToast("Link de cadastro copiado!");
-                          }}
-                          className="btn-boomii-ghost text-xs py-1.5 px-3.5"
-                        >
-                          Copiar Link de Cadastro
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border/40">
-                      {customers.slice(0, 5).map((cust) => {
-                        const isReady = cust.stamps >= (cust.totalStamps || 10);
-                        return (
-                          <div
-                            key={cust.id}
-                            onClick={() => setSelectedCustomer(cust)}
-                            className="py-3.5 flex items-center justify-between gap-4 hover:bg-card/50 px-2 rounded-xl transition-colors cursor-pointer group"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${cust.avatarBg}`}>
-                                {cust.initials}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors">
-                                    {cust.name}
-                                  </span>
-                                  {isReady && (
-                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground animate-pulse">
-                                      Recompensa pronta!
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground truncate block">
-                                  {cust.email || cust.phone}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 shrink-0">
-                              <div className="w-24 sm:w-32 flex flex-col items-end gap-1">
-                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-500 ${
-                                      isReady ? "bg-primary" : "bg-primary/80"
-                                    }`}
-                                    style={{ width: `${Math.min(100, (cust.stamps / (cust.totalStamps || 10)) * 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-medium text-muted-foreground">
-                                  <strong className={isReady ? "text-primary font-bold" : "text-foreground"}>
-                                    {cust.stamps}
-                                  </strong>
-                                  /{cust.totalStamps || 10}
-                                </span>
-                              </div>
-
-                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-2 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Atualização exclusiva por leitura do QR Code do cliente</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      abrirLeitor();
-                    }}
-                    className="text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                    onClick={() => setCurrentTab("clientes")}
+                    className="shrink-0 text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Scan className="w-3.5 h-3.5" />
-                    <span>Ler QR Code do cliente</span>
+                    <span>Ver todos ({customers.length})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
+
+                {customers.length === 0 ? (
+                  <div className="py-10 text-center space-y-3">
+                    <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <p className="font-bold text-foreground text-sm">Nenhum cliente cadastrado ainda</p>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      Envie o link de cadastro para os clientes criarem seus cartões e começarem a pontuar.
+                    </p>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(urlCadastroCliente(currentSlug));
+                          showToast("Link de cadastro copiado!");
+                        }}
+                        className="btn-boomii-ghost text-xs py-1.5 px-3.5"
+                      >
+                        Copiar link de cadastro
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/40">
+                    {clientesRecentes.map((cust) => {
+                      const total = cust.totalStamps || 10;
+                      const isReady = cust.stamps >= total;
+                      return (
+                        // Mesmo comportamento do cartão em Clientes: abre os
+                        // selos já com o cliente escolhido; cartela completa
+                        // leva ao botão Resgatar. Antes abria um pop-up com um
+                        // QR genérico e um código inventado na hora.
+                        <button
+                          key={cust.id}
+                          type="button"
+                          onClick={() => {
+                            if (isReady) {
+                              setBuscaClientes(cust.name);
+                              setCurrentTab("clientes");
+                            } else {
+                              abrirLeitor(cust);
+                            }
+                          }}
+                          className="w-full py-3 px-2 flex items-center gap-3 text-left hover:bg-secondary/50 rounded-xl transition-colors cursor-pointer min-w-0"
+                        >
+                          <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${cust.avatarBg}`}>
+                            {cust.initials}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-semibold text-foreground text-sm block truncate">{cust.name}</span>
+                            <span className="text-xs text-muted-foreground block truncate">{cust.lastVisit}</span>
+                          </div>
+                          {isReady ? (
+                            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground">
+                              <Gift className="w-3 h-3" />
+                              Pronta
+                            </span>
+                          ) : (
+                            <div className="shrink-0 w-16 sm:w-24 flex flex-col items-end gap-1">
+                              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-primary"
+                                  style={{ width: `${Math.min(100, (cust.stamps / total) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground tabular-nums">
+                                <strong className="text-foreground">{cust.stamps}</strong>/{total}
+                              </span>
+                            </div>
+                          )}
+                          <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              <div className="lg:col-span-5 surface-panel p-6 rounded-2xl flex flex-col justify-between space-y-6">
+              {/* Progresso dos cartões: onde a base está na cartela. Substitui o
+                  gráfico de rosca, que repetia o mesmo % do indicador acima. */}
+              <div className="lg:col-span-5 surface-panel p-4 sm:p-6 rounded-2xl space-y-4 min-w-0">
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <span className="label-eyebrow text-muted-foreground">SEU PROGRAMA</span>
-                      <h2 className="text-xl font-bold text-foreground mt-1">Um olhar rápido</h2>
-                    </div>
-                    <button
-                      type="button"
-                      title="Métricas de retenção calculadas com base nas visitas repetidas"
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <HelpCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="py-4 flex flex-col sm:flex-row items-center justify-center gap-8">
-                    <div className="relative w-36 h-36 flex items-center justify-center">
-                      <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          fill="transparent"
-                          stroke="oklch(0.24 0.005 285)"
-                          strokeWidth="12"
-                        />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          fill="transparent"
-                          stroke="oklch(0.855 0.163 88)"
-                          strokeWidth="12"
-                          strokeDasharray="251.2"
-                          strokeDashoffset={251.2 * (1 - (taxaRetorno / 100))}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <span className="text-2xl font-black text-foreground">{taxaRetorno}%</span>
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                          retorno
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 text-xs">
-                      <div className="flex items-center gap-2.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
-                        <div>
-                          <p className="font-semibold text-foreground">Clientes que voltaram</p>
-                          <span className="text-muted-foreground">
-                            {clientesRetorno} {clientesRetorno === 1 ? 'cliente' : 'clientes'} ({taxaRetorno}% da base)
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-muted shrink-0" />
-                        <div>
-                          <p className="font-semibold text-foreground">Ainda no primeiro ciclo</p>
-                          <span className="text-muted-foreground">
-                            {Math.max(0, totalClientes - clientesRetorno)} {Math.max(0, totalClientes - clientesRetorno) === 1 ? 'cliente' : 'clientes'} ({totalClientes > 0 ? 100 - taxaRetorno : 0}% em fidelização)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <span className="label-eyebrow text-muted-foreground">Seu programa</span>
+                  <h2 className="text-xl font-bold text-foreground mt-1">Progresso dos cartões</h2>
                 </div>
 
-                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                  <p className="text-xs text-foreground leading-relaxed">
-                    {totalClientes === 0 ? (
-                      <>
-                        <strong className="text-primary font-bold">Padrão Loja Nova</strong> — Seu programa de fidelidade está pronto para operar. Compartilhe o link do balcão ou escaneie o primeiro cliente para registrar selos.
-                      </>
-                    ) : (
-                      <>
-                        <strong className="text-primary font-bold">Programa Ativo</strong> — {totalClientes} cliente(s) fidelizado(s) e {totalSelos} selo(s) emitidos na {cardConfig.storeName}.
-                      </>
-                    )}
+                {totalClientes === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Assim que os primeiros clientes pontuarem, você vê aqui quantos estão perto da recompensa.
                   </p>
-                </div>
+                ) : (
+                  <div className="space-y-3">
+                    {[
+                      { rotulo: "Recompensa pronta", qtd: faixasProgresso.prontas, cor: "bg-primary" },
+                      { rotulo: "Quase lá (70%+ da cartela)", qtd: faixasProgresso.quaseLa, cor: "bg-amber-400" },
+                      { rotulo: "Acumulando", qtd: faixasProgresso.acumulando, cor: "bg-sky-400" },
+                      { rotulo: "Ainda sem selos", qtd: faixasProgresso.semSelos, cor: "bg-muted-foreground/40" },
+                    ].map(({ rotulo, qtd, cor }) => (
+                      <div key={rotulo} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-foreground font-medium truncate">{rotulo}</span>
+                          <span className="shrink-0 text-muted-foreground tabular-nums">
+                            <strong className="text-foreground">{qtd}</strong> · {Math.round((qtd / totalClientes) * 100)}%
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full ${cor}`} style={{ width: `${(qtd / totalClientes) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {faixasProgresso.quaseLa > 0 && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {faixasProgresso.quaseLa} {faixasProgresso.quaseLa === 1 ? "cliente está" : "clientes estão"} perto da recompensa — o aviso "Quase lá" da carteira ajuda a trazê-{faixasProgresso.quaseLa === 1 ? "lo" : "los"} de volta.
+                  </p>
+                )}
               </div>
             </div>
           </div>
         )}
-
         {/* ═══════════════════════════════════════════════════════════════
             ABA 2: IDENTIDADE DO CARTÃO (Com Uploads & Dimensionamento)
            ═══════════════════════════════════════════════════════════════ */}
@@ -3206,46 +3169,6 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Cliente */}
-      {selectedCustomer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="surface-panel p-6 rounded-3xl max-w-sm w-full space-y-4 border border-primary/40">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-foreground text-lg">{selectedCustomer.name}</h3>
-              <button onClick={() => setSelectedCustomer(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-card border border-border/60 text-center space-y-1">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
-                QR Code do Passe na Carteira
-              </span>
-              <div className="mx-auto w-20 h-20 bg-white p-1 rounded-lg flex items-center justify-center shadow">
-                <QrCode className="w-16 h-16 text-black" />
-              </div>
-              <span className="text-xs font-mono font-bold text-primary block">
-                {selectedCustomer.qrToken}
-              </span>
-            </div>
-
-            <p className="text-xs text-muted-foreground">Saldo: <strong>{selectedCustomer.stamps}/10 selos</strong></p>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCustomer(null);
-                abrirLeitor(selectedCustomer);
-              }}
-              className="btn-boomii w-full py-2.5 text-xs font-bold flex items-center justify-center gap-1.5"
-            >
-              <Scan className="w-3.5 h-3.5" />
-              <span>Escanear QR deste Cliente</span>
-            </button>
           </div>
         </div>
       )}
