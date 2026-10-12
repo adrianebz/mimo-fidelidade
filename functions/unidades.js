@@ -66,8 +66,65 @@ async function garantirPrincipal(db, lojaId, loja) {
   return { id: PRINCIPAL, ...dados };
 }
 
+/**
+ * Uma vez por loja: atribui à principal o que aconteceu ANTES das unidades
+ * existirem. Os contadores só começam a contar no deploy das filiais; sem
+ * isso, uma loja com 23 clientes mostrava "0 clientes cadastrados".
+ *  - clientes sem unidade de cadastro → principal;
+ *  - carimbos do mês atual sem unidade registrada → principal.
+ * Meses anteriores ficam de fora: o contador é por mês e eles já passaram.
+ */
+async function aplicarHistoricoNaPrincipal(db, lojaId) {
+  const principal = ref(db, lojaId, PRINCIPAL);
+  if ((await principal.get()).get('historicoAplicado')) return false;
+
+  const clientesSnap = await db.collection(`lojistas/${lojaId}/clientes`).get();
+  const clientes = clientesSnap.docs.filter((d) => !d.get('unidadeCadastro')).length;
+
+  const mes = mesAtual();
+  const [ano, mm] = mes.split('-').map(Number);
+  // Meia-noite em São Paulo (UTC-3) do dia 1º do mês.
+  const inicioDoMes = admin.firestore.Timestamp.fromMillis(Date.UTC(ano, mm - 1, 1, 3));
+  const cartoes = (await db.collection('cartoes').where('lojaId', '==', lojaId).get()).docs;
+  let carimbos = 0;
+  for (let i = 0; i < cartoes.length; i += 15) {
+    const listas = await Promise.all(
+      cartoes.slice(i, i + 15).map((c) => c.ref.collection('eventos').where('em', '>=', inicioDoMes).get())
+    );
+    listas.forEach((s) =>
+      s.docs.forEach((e) => {
+        if (String(e.get('tipo') || '').startsWith('selo_') && !e.get('unidadeId')) carimbos++;
+      })
+    );
+  }
+
+  // Transação: duas aberturas simultâneas da lista não contam o histórico duas vezes.
+  return db.runTransaction(async (tx) => {
+    const atual = await tx.get(principal);
+    if (atual.get('historicoAplicado')) return false;
+    tx.set(
+      principal,
+      {
+        historicoAplicado: true,
+        contagem: {
+          clientes: admin.firestore.FieldValue.increment(clientes),
+          carimbos: { [mes]: admin.firestore.FieldValue.increment(carimbos) },
+        },
+      },
+      { merge: true }
+    );
+    return true;
+  });
+}
+
 async function listar(db, lojaId, loja) {
   await garantirPrincipal(db, lojaId, loja);
+  try {
+    await aplicarHistoricoNaPrincipal(db, lojaId);
+  } catch (err) {
+    // Falhar aqui não pode impedir a lista de abrir; tenta de novo na próxima.
+    console.warn(`Unidades: histórico da principal de ${lojaId} não aplicado:`, err.message);
+  }
   const snap = await colecao(db, lojaId).get();
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
