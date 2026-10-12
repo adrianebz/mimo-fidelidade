@@ -146,11 +146,26 @@ async function atualizarResumo(db, lojaId) {
 }
 
 /**
+ * Gerente de filial é recurso do Completo. O token dele ainda pode valer por
+ * até 1 h depois de a loja trocar de plano — por isso a checagem é feita
+ * aqui, contra o plano atual da loja, e não só pela claim.
+ */
+function exigirGerenteNoPlano(claims, loja) {
+  if (claims?.role === 'gerente' && !planos.temRecurso(loja, 'filiais')) {
+    throw new HttpsError(
+      'permission-denied',
+      'O acesso de gerente de filial está disponível apenas no plano Completo. Fale com o responsável pela loja.'
+    );
+  }
+}
+
+/**
  * Unidade em que o atendimento está acontecendo.
  * Gerente: sempre a dele. Dono/admin: a escolhida no painel, ou a principal.
  * Unidade inativa/inexistente cai na principal — o carimbo nunca se perde.
  */
 async function resolverAtendimento(db, lojaId, loja, claims, unidadeIdParam) {
+  exigirGerenteNoPlano(claims, loja);
   const pedida = claims?.role === 'gerente' ? claims.unidadeId : unidadeIdParam;
   if (pedida && pedida !== PRINCIPAL) {
     const snap = await ref(db, lojaId, String(pedida)).get();
@@ -186,15 +201,28 @@ function contarCliente(gravador, db, lojaId, unidadeId) {
  */
 async function aplicarPlano(db, lojaId, loja) {
   if (planos.temRecurso(loja, 'filiais')) return 0;
-  const snap = await colecao(db, lojaId).where('status', '==', 'ativa').get();
-  const extras = snap.docs.filter((d) => d.id !== PRINCIPAL);
-  if (!extras.length) return 0;
+  const snap = await colecao(db, lojaId).get();
+
+  // Gerentes (inclusive o da principal) perdem o acesso: o papel é do Completo.
+  const comGerente = snap.docs.filter((d) => d.get('gerenteUid'));
+  for (const d of comGerente) {
+    const uid = d.get('gerenteUid');
+    await admin.auth().setCustomUserClaims(uid, null).catch(() => {});
+    await admin.auth().revokeRefreshTokens(uid).catch(() => {});
+  }
+
+  const extras = snap.docs.filter((d) => d.id !== PRINCIPAL && d.get('status') === 'ativa');
+  if (!extras.length && !comGerente.length) return 0;
+
+  const apagar = admin.firestore.FieldValue.delete();
   const lote = db.batch();
   extras.forEach((d) =>
     lote.update(d.ref, { status: 'inativa', motivoInativa: 'plano', atualizadaEm: admin.firestore.FieldValue.serverTimestamp() })
   );
+  comGerente.forEach((d) => lote.update(d.ref, { gerenteEmail: apagar, gerenteUid: apagar, gerenteDesde: apagar }));
   await lote.commit();
   await atualizarResumo(db, lojaId);
+  if (comGerente.length) console.log(`Plano sem filiais: ${comGerente.length} gerente(s) de ${lojaId} sem acesso.`);
   return extras.length;
 }
 
@@ -235,6 +263,7 @@ module.exports = {
   listar,
   atualizarResumo,
   resolverAtendimento,
+  exigirGerenteNoPlano,
   contarCarimbo,
   contarCliente,
   aplicarPlano,

@@ -24,11 +24,15 @@ service cloud.firestore {
     }
 
     // Gerente de filial: opera o balcão da loja enquanto a unidade dele
-    // estiver ativa. Desativar a unidade (ou trocar de plano) corta o acesso.
+    // estiver ativa E a loja estiver no Completo. A checagem do plano é aqui
+    // porque o token do gerente continua válido por até 1 h depois de o
+    // admin rebaixar o plano (as claims já foram revogadas pelo servidor).
     function isGerente(lojaId) {
       return request.auth != null
         && request.auth.token.role == 'gerente'
         && request.auth.token.lojaId == lojaId
+        && get(/databases/$(database)/documents/lojistas/$(lojaId)).data.financeiro.plano
+             in ['completo', 'rede', 'marca', 'unlimited', 'enterprise']
         && get(/databases/$(database)/documents/lojistas/$(lojaId)/unidades/$(request.auth.token.unidadeId)).data.status == 'ativa';
     }
 

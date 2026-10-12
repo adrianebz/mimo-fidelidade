@@ -72,6 +72,8 @@ import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../p
 import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
 import { UnidadesPainel } from "../../components/UnidadesPainel.js";
 import { listarUnidades, ListaUnidades } from "../../services/boomiiWalletService.js";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../firebase.js";
 
 type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos" | "unidades";
 
@@ -283,6 +285,60 @@ export const SitePainel: React.FC<{
   const [plano, setPlano] = useState<Plano>("pro");
   const pode = (recurso: Recurso) => temRecurso(plano, recurso);
 
+  /**
+   * Plano, status financeiro e selos por leitura, a partir do documento da
+   * loja. Chamado ao abrir e a CADA mudança do documento (onSnapshot abaixo):
+   * antes o plano era lido uma vez só, e quem estava com o painel aberto
+   * continuava com os recursos do plano antigo depois de o admin trocá-lo.
+   */
+  const planoAnteriorRef = useRef<Plano | null>(null);
+  const aplicarDadosDaLoja = React.useCallback(
+    (dados: any) => {
+      if (!dados) return;
+      const p = normalizarPlano(dados.financeiro?.plano ?? dados.plano);
+      setPlano(p);
+      const status = dados.statusFinanceiro || dados.financeiro?.status;
+      if (status === "adimplente" || status === "inadimplente") setFinancialStatus(status);
+
+      const design = dados.design;
+      if (temRecurso(p, "variosSelosPorLeitura")) {
+        const padrao = design?.stamps?.perScan ?? dados.regras?.selosPorLeitura ?? 1;
+        const teto = design?.stamps?.maxPerScan ?? dados.regras?.maxSelosPorLeitura ?? 10;
+        setSelosPorLeitura(Math.max(1, Math.min(padrao, teto)));
+        setMaxSelosPorLeitura(Math.max(1, teto));
+        setPermiteAlterarQuantidade(design?.stamps?.allowOperatorOverride !== false);
+      } else {
+        setSelosPorLeitura(1);
+        setMaxSelosPorLeitura(1);
+        setPermiteAlterarQuantidade(false);
+      }
+
+      const anterior = planoAnteriorRef.current;
+      planoAnteriorRef.current = p;
+      if (anterior && anterior !== p) {
+        // Gerente de filial só existe no Completo: perdeu o plano, perde o acesso.
+        if (ehGerente && !temRecurso(p, "filiais")) {
+          setToastMessage("O acesso de gerente de filial foi encerrado pela loja.");
+          setTimeout(onSair, 2500);
+          return;
+        }
+        setToastMessage(`Plano da loja alterado para ${NOME_PLANO[p]}. Os recursos do painel já foram atualizados.`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ehGerente]
+  );
+
+  useEffect(() => {
+    if (!currentSlug) return;
+    return onSnapshot(
+      doc(db, "lojistas", currentSlug),
+      (snap) => snap.exists() && aplicarDadosDaLoja(snap.data()),
+      (err) => console.warn("Plano da loja: escuta em tempo real indisponível:", err.message)
+    );
+  }, [currentSlug, aplicarDadosDaLoja]);
+
   // ── Unidades (filiais) ──
   // Dono: escolhe no topo em qual unidade está atendendo (fica salvo neste
   // aparelho). Gerente: sempre a unidade dele, que vem do token.
@@ -308,7 +364,13 @@ export const SitePainel: React.FC<{
   }, [currentSlug]);
 
   useEffect(() => {
-    if (papel && (ehGerente || plano === "completo")) recarregarUnidades();
+    if (papel && (ehGerente || plano === "completo")) {
+      recarregarUnidades();
+    } else if (!ehGerente) {
+      // Saiu do Completo: some o seletor de filiais e volta para a principal.
+      setListaUnidades(null);
+      setUnidadeEscolhida("principal");
+    }
   }, [papel, plano, ehGerente, recarregarUnidades]);
 
   useEffect(() => {
@@ -475,22 +537,8 @@ export const SitePainel: React.FC<{
         setFinancialStatus(loja.statusFinanceiro);
       }
 
-      // Regras de quantidade por atendimento, definidas no Estúdio
-      const design = (loja as any).design;
-      const padrao = design?.stamps?.perScan ?? (loja.regras as any)?.selosPorLeitura ?? 1;
-      const teto = design?.stamps?.maxPerScan ?? (loja.regras as any)?.maxSelosPorLeitura ?? 10;
-      setSelosPorLeitura(Math.max(1, Math.min(padrao, teto)));
-      setMaxSelosPorLeitura(Math.max(1, teto));
-      setPermiteAlterarQuantidade(design?.stamps?.allowOperatorOverride !== false);
-
-      // Plano da loja: o servidor já aplica os limites; aqui só exibimos.
-      const planoLoja = normalizarPlano(loja.financeiro?.plano);
-      setPlano(planoLoja);
-      if (!temRecurso(planoLoja, "variosSelosPorLeitura")) {
-        setSelosPorLeitura(1);
-        setMaxSelosPorLeitura(1);
-        setPermiteAlterarQuantidade(false);
-      }
+      // Plano e regras de quantidade (também atualizados em tempo real abaixo).
+      aplicarDadosDaLoja(loja);
       if (loja.nome) {
         setCardConfig((prev) => ({
           ...prev,

@@ -1501,6 +1501,7 @@ exports.fichaCliente = onCall({ region: 'southamerica-east1' }, async (req) => {
   const db = admin.firestore();
   const loja = (await db.doc(`lojistas/${lojaId}`).get()).data() || {};
   planos.exigirRecurso(loja, 'fichaCliente', 'A ficha do cliente');
+  unidades.exigirGerenteNoPlano(claims, loja);
 
   const clienteSnap = await db.doc(`lojistas/${lojaId}/clientes/${clienteId}`).get();
   if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado nesta loja.');
@@ -1603,6 +1604,7 @@ exports.listarUnidades = onCall({ region: 'southamerica-east1' }, async (req) =>
   if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
   const db = admin.firestore();
   const loja = await carregarLoja(db, lojaId);
+  unidades.exigirGerenteNoPlano(claims, loja);
   const lista = await unidades.listar(db, lojaId, loja);
   const mes = unidades.mesAtual();
   const plano = planos.planoDaLoja(loja);
@@ -1844,6 +1846,7 @@ exports.gerarLinkReenvio = onCall({ region: 'southamerica-east1' }, async (req) 
   }
 
   const db = admin.firestore();
+  if (claims.role === 'gerente') unidades.exigirGerenteNoPlano(claims, await carregarLoja(db, lojaId));
   const cartoesSnap = await db.collection('cartoes')
     .where('lojaId', '==', lojaId)
     .where('clienteId', '==', String(clienteId))
