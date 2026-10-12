@@ -1,7 +1,8 @@
 name: Build & Deploy iOS (App Store / Unlisted)
 
-# Dispara (1) sozinho a cada envio à main que mexa no app e (2) à mão, pela aba
-# Actions. SEGURANÇA: só quem tem acesso de escrita ao repositório dispara.
+# Só manual, pela aba Actions → Run workflow: a build no TestFlight sai quando a
+# responsável decide, não a cada envio ao GitHub.
+# SEGURANÇA: só quem tem acesso de escrita ao repositório dispara.
 on:
   workflow_dispatch:
     inputs:
@@ -15,24 +16,12 @@ on:
         required: false
         type: string
         default: ''
-  # O app iOS empacota o painel (client/dist) no momento do build: sem isto,
-  # toda mudança publicada no site ficava fora do app até alguém rodar o
-  # workflow à mão. Agora cada envio que mexe no app gera uma build no TestFlight.
-  push:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - 'capacitor.config.ts'
-      - 'ios/**'
-      - 'package.json'
-      - '.github/workflows/deploy-ios.yml'
 
 # SEGURANÇA: Token do GitHub em modo somente leitura (Princípio do menor privilégio)
 permissions:
   contents: read
 
-# Vários envios seguidos: só a versão mais nova vira build (as anteriores
-# em andamento são canceladas — não faz sentido mandar versões já superadas).
+# Uma build por vez; disparar de novo enquanto uma roda cancela a anterior.
 concurrency:
   group: ios-deployment
   cancel-in-progress: true
@@ -42,8 +31,7 @@ jobs:
     name: Compilar e Assinar iOS
     runs-on: macos-15 # Runner oficial macOS Sequoia com Xcode 16+ (SDK iOS recente exigido pela Apple)
     env:
-      # No envio automático (push) sempre manda para o App Store Connect.
-      ENVIAR_APPSTORE: ${{ github.event_name == 'push' || inputs.upload_to_appstore }}
+      ENVIAR_APPSTORE: ${{ inputs.upload_to_appstore }}
 
     steps:
       - name: Checkout do código
