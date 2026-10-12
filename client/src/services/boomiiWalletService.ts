@@ -1025,7 +1025,18 @@ function mensagemDoServidor(err: any, padrao: string): string {
     'invalid-argument', 'permission-denied', 'not-found', 'unauthenticated',
     'failed-precondition', 'deadline-exceeded', 'resource-exhausted', 'already-exists',
   ];
-  return conhecidos.includes(codigo) && err?.message ? err.message : padrao;
+  // Mensagem "crua" (ex.: NOT_FOUND, INTERNAL) não é do nosso servidor: é o
+  // Firebase dizendo que a função não existe ou quebrou.
+  const crua = /^[A-Z_-]+$/.test(String(err?.message || '')) || err?.message === codigo;
+  if (conhecidos.includes(codigo) && err?.message && !crua) return err.message;
+  // Inesperado: mostra o código para dar pista ao suporte, em vez de só
+  // "não foi possível" (que escondia, por exemplo, uma função não publicada).
+  console.error('Erro na chamada ao servidor:', err);
+  const pista =
+    codigo === 'not-found'
+      ? 'a função ainda não foi publicada no servidor (deploy pendente)'
+      : codigo || err?.message || 'desconhecido';
+  return `${padrao} (${pista})`;
 }
 
 export interface MetricasCliente {

@@ -1887,7 +1887,40 @@ exports.aprovarUnidade = onCall({ region: 'southamerica-east1' }, async (req) =>
  * de redefinição — o painel dispara o e-mail e também mostra o link para
  * mandar pelo WhatsApp.
  */
+/**
+ * Erros do Firebase Auth viram mensagens claras. Antes, qualquer falha do
+ * Auth subia como "internal" e o painel só dizia "Não foi possível convidar
+ * o gerente" — sem pista do motivo para o lojista nem para o suporte.
+ */
+function erroDeAuthParaUsuario(err, contexto) {
+  if (err instanceof HttpsError) return err;
+  const codigo = String(err?.code || '');
+  console.error(`${contexto}: falha do Firebase Auth`, codigo, err?.message);
+  const mensagens = {
+    'auth/email-already-exists': 'Este e-mail já tem uma conta. Tente de novo em alguns segundos.',
+    'auth/invalid-email': 'E-mail inválido.',
+    'auth/operation-not-allowed':
+      'O login por e-mail e senha está desativado no Firebase (Authentication → Métodos de login). Ative para convidar gerentes.',
+    'auth/insufficient-permission':
+      'O servidor não tem permissão para criar contas no Firebase Auth. Verifique as permissões da conta de serviço das Functions.',
+    'auth/project-not-found': 'Projeto do Firebase não encontrado para o Auth.',
+    'auth/too-many-requests': 'Muitas tentativas seguidas. Aguarde um minuto e tente de novo.',
+  };
+  return new HttpsError(
+    'failed-precondition',
+    mensagens[codigo] || `Erro do Firebase Auth ao convidar o gerente (${codigo || err?.message || 'desconhecido'}).`
+  );
+}
+
 exports.convidarGerente = onCall({ region: 'southamerica-east1' }, async (req) => {
+  try {
+    return await convidarGerenteImpl(req);
+  } catch (err) {
+    throw erroDeAuthParaUsuario(err, 'convidarGerente');
+  }
+});
+
+async function convidarGerenteImpl(req) {
   const claims = req.auth?.token || {};
   const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'convidar gerentes para');
   const unidadeId = String(req.data?.unidadeId || '');
@@ -1943,7 +1976,7 @@ exports.convidarGerente = onCall({ region: 'southamerica-east1' }, async (req) =
     em: admin.firestore.FieldValue.serverTimestamp(),
   });
   return { sucesso: true, link };
-});
+}
 
 exports.removerGerente = onCall({ region: 'southamerica-east1' }, async (req) => {
   const claims = req.auth?.token || {};
