@@ -94,6 +94,10 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
   const unidades = lista?.unidades || [];
   const ativas = unidades.filter((u) => u.status === 'ativa').length;
   const contratadas = lista?.contratadas || 1;
+  // O lojista só cria/reativa dentro do que o admin liberou; o admin amplia o
+  // contrato ao criar. O servidor recusa do mesmo jeito — aqui é para não
+  // oferecer o que não vai funcionar.
+  const limiteAtingido = !modoAdmin && ativas >= contratadas;
 
   const alternar = async (u: Unidade) => {
     setMenuAberto(null);
@@ -135,22 +139,32 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
             Um cartão para a rede toda: o cliente acumula e resgata em qualquer unidade.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setFormulario({})}
-          className="btn-boomii shrink-0 px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nova unidade</span>
-        </button>
+        {!limiteAtingido && (
+          <button
+            type="button"
+            onClick={() => setFormulario({})}
+            className="btn-boomii shrink-0 px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova unidade</span>
+          </button>
+        )}
       </div>
 
-      <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div
+        className={`rounded-2xl border px-4 py-3 text-xs flex flex-wrap items-center gap-x-4 gap-y-1 ${
+          limiteAtingido ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300' : 'border-border/60 bg-card text-muted-foreground'
+        }`}
+      >
         <span>
           <strong className="text-foreground">{ativas}</strong> de <strong className="text-foreground">{contratadas}</strong>{' '}
           {contratadas === 1 ? 'unidade contratada' : 'unidades contratadas'} em uso
         </span>
-        <span>Unidade extra: + R$ {PRECO_UNIDADE_EXTRA}/mês, liberada pela equipe Boomii</span>
+        <span>
+          {limiteAtingido
+            ? `Limite atingido. Para abrir mais uma unidade (+ R$ ${PRECO_UNIDADE_EXTRA}/mês), fale com a equipe Boomii.`
+            : `Unidade extra: + R$ ${PRECO_UNIDADE_EXTRA}/mês, liberada pela equipe Boomii`}
+        </span>
       </div>
 
       {carregando && !lista ? (
@@ -206,7 +220,8 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
                               Icone: Power,
                               texto: u.status === 'ativa' ? 'Desativar' : 'Ativar',
                               acao: () => alternar(u),
-                              oculto: u.principal || u.status === 'aguardando',
+                              // Reativar com o limite cheio não é possível para o lojista.
+                              oculto: u.principal || u.status === 'aguardando' || (u.status !== 'ativa' && limiteAtingido),
                             },
                           ]
                             .filter((i) => !i.oculto)

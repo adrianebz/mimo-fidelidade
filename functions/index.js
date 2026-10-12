@@ -1744,10 +1744,18 @@ exports.salvarUnidade = onCall({ region: 'southamerica-east1' }, async (req) => 
   await unidades.garantirPrincipal(db, lojaId, loja);
   const ativas = await contarAtivas(db, lojaId);
   const contratadas = unidades.contratadas(loja);
-  let status = 'ativa';
+  const status = 'ativa';
   if (ativas >= contratadas) {
-    if (ehAdmin) await ampliarContratadas(db, lojaId, loja, ativas + 1);
-    else status = 'aguardando';
+    // Só o admin amplia o contrato. O lojista não cria além do liberado —
+    // antes a unidade ficava "aguardando"; agora o limite é respeitado.
+    if (!ehAdmin) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `Seu plano tem ${contratadas} ${contratadas === 1 ? 'unidade contratada' : 'unidades contratadas'} e todas estão em uso. ` +
+          `Para abrir mais uma (+ R$ ${planos.PRECOS.unidadeExtra}/mês), fale com a equipe Boomii.`
+      );
+    }
+    await ampliarContratadas(db, lojaId, loja, ativas + 1);
   }
   const id = await unidades.novoId(db, lojaId, dados.nome);
   await unidades.ref(db, lojaId, id).set({
