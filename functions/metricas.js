@@ -60,6 +60,14 @@ function calcularMetricas(cliente, cartoes, eventos, periodo = {}) {
   const frequencia =
     carimbos.length >= 2 ? Math.round((ultima - primeira) / DIA / (carimbos.length - 1)) : null;
 
+  // Unidade onde o cliente mais carimba (filiais). Sem unidade registrada
+  // (carimbos anteriores às filiais), fica vazio.
+  const porUnidade = {};
+  carimbos.forEach((e) => {
+    if (e.unidadeNome) porUnidade[e.unidadeNome] = (porUnidade[e.unidadeNome] || 0) + 1;
+  });
+  const unidadePreferida = Object.entries(porUnidade).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+
   const ativo = cartoes.find((c) => ['ativo', 'completo'].includes(c.status)) || cartoes[0] || {};
   const cadastro =
     ms(cliente?.consentimento?.em) || ms(ativo.criadoEm) || ms(cliente?.atualizadoEm) || 0;
@@ -81,6 +89,8 @@ function calcularMetricas(cliente, cartoes, eventos, periodo = {}) {
     ultimaVisita: ultima || null,
     frequenciaMediaDias: frequencia,
     diasSemAparecer: ultima ? Math.floor((Date.now() - ultima) / DIA) : null,
+    unidadeCadastro: cliente?.unidadeCadastro?.nome || ativo.unidade || '',
+    unidadePreferida,
     appleWallet: !!ativo.apple?.instalado,
     consentimentoLgpd: !!cliente?.consentimento?.aceito,
   };
@@ -99,6 +109,7 @@ function linhaDoTempo(eventos, limite = 40) {
       premio: e.premio,
       ciclo: e.cicloResgatado,
       operador: e.operadorNome,
+      unidade: e.unidadeNome,
     }));
 }
 
@@ -147,6 +158,8 @@ const COLUNAS = [
   ['Última visita', (m) => dataBR(m.ultimaVisita)],
   ['Frequência média (dias)', (m) => m.frequenciaMediaDias ?? ''],
   ['Dias sem aparecer', (m) => m.diasSemAparecer ?? ''],
+  ['Unidade de cadastro', (m) => m.unidadeCadastro],
+  ['Unidade preferida', (m) => m.unidadePreferida],
   ['Apple Wallet', (m) => (m.appleWallet ? 'Sim' : 'Não')],
   ['Consentimento LGPD', (m) => (m.consentimentoLgpd ? 'Sim' : 'Não')],
 ];

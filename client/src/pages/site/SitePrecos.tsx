@@ -50,8 +50,8 @@ const planos: Array<{ nome: string; preco: string; resumo: string; itens: Item[]
     resumo: "Para operar e crescer com equipe e dados.",
     itens: [
       { texto: "Tudo do Pro" },
-      { texto: `Filiais: 1 unidade inclusa, + R$ ${PRECO_UNIDADE_EXTRA}/mês por unidade extra`, emBreve: true },
-      { texto: "Gerente de filial com acesso próprio", emBreve: true },
+      { texto: `Filiais: 1 unidade inclusa, + R$ ${PRECO_UNIDADE_EXTRA}/mês por unidade extra` },
+      { texto: "Gerente de filial com acesso próprio" },
       { texto: "Planilha com as métricas de cada cliente" },
       { texto: "Campanhas para grupos de clientes", emBreve: true },
       { texto: "Cartão sem a marca Boomii", emBreve: true },

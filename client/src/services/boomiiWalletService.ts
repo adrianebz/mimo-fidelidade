@@ -33,6 +33,8 @@ export interface CustomerEnrollInput {
   email: string;
   aniversario?: string;
   consentimento: boolean;
+  /** Unidade do link de cadastro (?u=), para filiais. */
+  unidadeId?: string;
 }
 
 export interface EnrolledCardResult {
@@ -81,7 +83,11 @@ export interface LojistaFirestoreData {
     plano: string;
     valorMensal: number;
     bloqueadoPorInadimplencia: boolean;
+    /** Unidades (filiais) contratadas — só o admin grava. */
+    unidadesContratadas?: number;
   };
+  /** Espelho mantido pelo servidor para o admin listar as filiais de cada loja. */
+  unidadesResumo?: { ativas: number; inativas: number; aguardando: number };
   layout?: {
     corFundo?: string;
     corTexto?: string;
@@ -429,7 +435,7 @@ export async function cadastrarClienteECartao(input: CustomerEnrollInput): Promi
   const loja = await obterDadosLojista(input.lojaId);
 
   const criarCartaoFn = httpsCallable<
-    { lojaId: string; nome: string; celular: string; email: string; aniversario?: string; consentimento: boolean },
+    { lojaId: string; nome: string; celular: string; email: string; aniversario?: string; consentimento: boolean; unidadeId?: string },
     { cartaoId: string; jaExistia: boolean; selos: number; meta: number; status: string; saveUrl: string; applePassUrl?: string; totpSecret?: string }
   >(functions, 'criarCartao');
 
@@ -440,6 +446,7 @@ export async function cadastrarClienteECartao(input: CustomerEnrollInput): Promi
     email: input.email,
     aniversario: input.aniversario,
     consentimento: input.consentimento,
+    ...(input.unidadeId ? { unidadeId: input.unidadeId } : {}),
   });
 
   return {
@@ -475,9 +482,11 @@ export async function carimbarSelo(params: {
   lojaId: string;
   /** Quantos selos creditar nesta operação (ex.: cliente levou 5 itens). */
   quantidade?: number;
+  /** Unidade onde o atendimento acontece (filiais). Gerente: ignorado, vale a dele. */
+  unidadeId?: string;
 }): Promise<StampResult> {
   const carimbarFn = httpsCallable<
-    { qr?: string; pin?: string; lojaId: string; manualCardId?: string; quantidade?: number },
+    { qr?: string; pin?: string; lojaId: string; manualCardId?: string; quantidade?: number; unidadeId?: string },
     StampResult
   >(functions, 'carimbar');
 
@@ -485,6 +494,7 @@ export async function carimbarSelo(params: {
     qr: params.qr,
     ...(params.pin ? { pin: params.pin } : {}),
     ...(params.quantidade && params.quantidade > 1 ? { quantidade: params.quantidade } : {}),
+    ...(params.unidadeId ? { unidadeId: params.unidadeId } : {}),
     lojaId: params.lojaId,
   });
 
@@ -500,15 +510,17 @@ export async function resgatarPremio(params: {
   cartaoId: string;
   pin?: string;
   lojaId: string;
+  unidadeId?: string;
 }): Promise<{ sucesso: boolean; premio: string; novoCiclo: number }> {
   const resgatarFn = httpsCallable<
-    { cartaoId: string; pin?: string; lojaId: string },
+    { cartaoId: string; pin?: string; lojaId: string; unidadeId?: string },
     { sucesso: boolean; premio: string; novoCiclo: number; cliente: string }
   >(functions, 'resgatar');
 
   const { data } = await resgatarFn({
     cartaoId: params.cartaoId,
     ...(params.pin ? { pin: params.pin } : {}),
+    ...(params.unidadeId ? { unidadeId: params.unidadeId } : {}),
     lojaId: params.lojaId,
   });
   return { sucesso: data.sucesso, premio: data.premio, novoCiclo: data.novoCiclo };
@@ -653,6 +665,7 @@ export async function listarTodosLojistas(): Promise<LojistaFirestoreData[]> {
         layout: data.layout,
         regras: data.regras,
         criadoEm: data.criadoEm,
+        unidadesResumo: data.unidadesResumo,
       });
     });
     return list;
@@ -825,12 +838,106 @@ export async function excluirCliente(lojaId: string, clienteId: string): Promise
   }
 }
 
+// ─── Unidades (filiais) e gerentes ───────────────────────────────────────────
+
+export interface Unidade {
+  id: string;
+  nome: string;
+  endereco: string;
+  cidade: string;
+  whatsapp: string;
+  principal: boolean;
+  status: 'ativa' | 'inativa' | 'aguardando';
+  motivoInativa: 'plano' | 'manual' | null;
+  gerenteEmail: string | null;
+  clientes: number;
+  carimbosMes: number;
+}
+
+export interface ListaUnidades {
+  plano: 'essencial' | 'pro' | 'completo';
+  contratadas: number;
+  mensalidade: number;
+  unidades: Unidade[];
+}
+
+export interface DadosUnidade {
+  nome: string;
+  endereco?: string;
+  cidade?: string;
+  whatsapp?: string;
+}
+
+type Res<T> = ({ sucesso: true } & T) | { sucesso: false; erro: string };
+
+async function chamar<E, S>(nome: string, entrada: E, padrao: string): Promise<Res<S>> {
+  try {
+    const { data } = await httpsCallable<E, S>(functions, nome)(entrada);
+    return { sucesso: true, ...(data as any) };
+  } catch (err: any) {
+    return { sucesso: false, erro: mensagemDoServidor(err, padrao) };
+  }
+}
+
+export const listarUnidades = (lojaId: string) =>
+  chamar<{ lojaId: string }, ListaUnidades>('listarUnidades', { lojaId }, 'Não foi possível carregar as unidades.');
+
+export const salvarUnidade = (lojaId: string, dados: DadosUnidade, unidadeId?: string) =>
+  chamar<{ lojaId: string; unidadeId?: string } & DadosUnidade, { id: string; status?: Unidade['status'] }>(
+    'salvarUnidade',
+    { lojaId, ...dados, ...(unidadeId ? { unidadeId } : {}) },
+    'Não foi possível salvar a unidade.'
+  );
+
+export const alterarStatusUnidade = (lojaId: string, unidadeId: string, ativa: boolean) =>
+  chamar<{ lojaId: string; unidadeId: string; ativa: boolean }, {}>(
+    'alterarStatusUnidade',
+    { lojaId, unidadeId, ativa },
+    'Não foi possível alterar a unidade.'
+  );
+
+/** Só admin: libera uma unidade criada além do contratado (cobra a extra). */
+export const aprovarUnidade = (lojaId: string, unidadeId: string) =>
+  chamar<{ lojaId: string; unidadeId: string }, { unidadesContratadas: number }>(
+    'aprovarUnidade',
+    { lojaId, unidadeId },
+    'Não foi possível liberar a unidade.'
+  );
+
+/**
+ * Convida o gerente: o servidor cria a conta com acesso só à unidade e
+ * devolve o link para ele criar a senha. Também disparamos o e-mail de
+ * "redefinir senha" do Firebase, que serve de convite.
+ */
+export async function convidarGerente(lojaId: string, unidadeId: string, email: string) {
+  const res = await chamar<{ lojaId: string; unidadeId: string; email: string }, { link: string | null }>(
+    'convidarGerente',
+    { lojaId, unidadeId, email },
+    'Não foi possível convidar o gerente.'
+  );
+  if (res.sucesso) {
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+    } catch {
+      // O link devolvido continua valendo para mandar pelo WhatsApp.
+    }
+  }
+  return res;
+}
+
+export const removerGerente = (lojaId: string, unidadeId: string) =>
+  chamar<{ lojaId: string; unidadeId: string }, {}>(
+    'removerGerente',
+    { lojaId, unidadeId },
+    'Não foi possível remover o gerente.'
+  );
+
 /** Erros das callables com mensagem já em português vinda do servidor. */
 function mensagemDoServidor(err: any, padrao: string): string {
   const codigo = String(err?.code || '').replace('functions/', '');
   const conhecidos = [
     'invalid-argument', 'permission-denied', 'not-found', 'unauthenticated',
-    'failed-precondition', 'deadline-exceeded',
+    'failed-precondition', 'deadline-exceeded', 'resource-exhausted', 'already-exists',
   ];
   return conhecidos.includes(codigo) && err?.message ? err.message : padrao;
 }

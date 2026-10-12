@@ -36,6 +36,13 @@ export const PRECO_PLANO: Record<Plano, number> = { essencial: 69, pro: 149, com
 export const PRECO_UNIDADE_EXTRA = 79;
 export const UNIDADES_INCLUIDAS = 1;
 
+/** Mensalidade com as unidades extras (só o Completo tem filiais). Igual ao servidor. */
+export function mensalidadeDoPlano(plano: Plano, unidadesContratadas = 1): number {
+  if (plano !== 'completo') return PRECO_PLANO[plano];
+  const extras = Math.max(0, (Number(unidadesContratadas) || 1) - UNIDADES_INCLUIDAS);
+  return PRECO_PLANO.completo + extras * PRECO_UNIDADE_EXTRA;
+}
+
 const PRO: Record<Recurso, boolean> = {
   variosSelosPorLeitura: true,
   estudioCompleto: true,

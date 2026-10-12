@@ -39,7 +39,7 @@ function ehRotaDoLojista(path: string): boolean {
  */
 type Sessao =
   | { carregando: true }
-  | { carregando: false; papel: 'admin' | 'lojista' | null };
+  | { carregando: false; papel: 'admin' | 'lojista' | 'gerente' | null; unidadeId?: string };
 
 function TelaCarregando() {
   return (
@@ -73,12 +73,18 @@ export const App: React.FC = () => {
         setSessao({ carregando: true });
         try {
           const { claims } = await user.getIdTokenResult();
-          const papel = claims.role === 'admin' || claims.role === 'lojista' ? claims.role : null;
+          const papel =
+            claims.role === 'admin' || claims.role === 'lojista' || claims.role === 'gerente' ? claims.role : null;
           // Lojista vê sempre a própria loja, a que está no token.
-          if (papel === 'lojista' && claims.lojaId) {
+          // Gerente de filial também: a loja dele é a do token.
+          if ((papel === 'lojista' || papel === 'gerente') && claims.lojaId) {
             localStorage.setItem('boomii_active_lojista', String(claims.lojaId));
           }
-          setSessao({ carregando: false, papel });
+          setSessao({
+            carregando: false,
+            papel,
+            unidadeId: papel === 'gerente' && claims.unidadeId ? String(claims.unidadeId) : undefined,
+          });
         } catch {
           setSessao({ carregando: false, papel: null });
         }
@@ -174,7 +180,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!acessoNegado || sessao.carregando) return;
-    setSiteTab(siteTab === 'admin' && sessao.papel === 'lojista' ? 'painel' : 'login');
+    setSiteTab(siteTab === 'admin' && (sessao.papel === 'lojista' || sessao.papel === 'gerente') ? 'painel' : 'login');
   }, [acessoNegado, sessao, siteTab]);
 
   /** Encerra a sessão de verdade: sem isso, "Sair" só trocava de tela. */
@@ -224,7 +230,12 @@ export const App: React.FC = () => {
   // Se estiver no painel do lojista, renderiza o layout específico do painel sem o cabeçalho público.
   // No app, qualquer aba que não seja login cai aqui: ele NUNCA renderiza o site institucional.
   if (siteTab === 'painel' || (isAppMode && siteTab !== 'login')) {
-    return <SitePainel onNavigate={(tab) => setSiteTab(tab)} onSair={sair} />;
+    return <SitePainel
+        onNavigate={(tab) => setSiteTab(tab)}
+        onSair={sair}
+        papel={sessao.carregando ? null : sessao.papel}
+        unidadeGerente={sessao.carregando ? undefined : sessao.unidadeId}
+      />;
   }
 
   // A área do lojista é uma tela isolada: sem cabeçalho nem rodapé do site.

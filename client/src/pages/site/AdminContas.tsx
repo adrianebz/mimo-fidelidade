@@ -15,7 +15,85 @@ import {
 } from '../../services/boomiiWalletService.js';
 import { SiteNavTab } from '../../components/SiteHeader.js';
 import { urlCadastroCliente } from '../../siteConfig.js';
-import { NOME_PLANO, ORDEM_PLANOS, PRECO_PLANO, normalizarPlano } from '../../planos.js';
+import {
+  NOME_PLANO,
+  ORDEM_PLANOS,
+  PRECO_PLANO,
+  PRECO_UNIDADE_EXTRA,
+  mensalidadeDoPlano,
+  normalizarPlano,
+} from '../../planos.js';
+import { Building2 } from 'lucide-react';
+import { UnidadesPainel } from '../../components/UnidadesPainel.js';
+import { listarUnidades, ListaUnidades } from '../../services/boomiiWalletService.js';
+
+/**
+ * Filiais de uma loja, vistas pelo administrador Boomii: mesmo painel do
+ * lojista, com "Liberar (cobrar extra)" para as unidades aguardando e sem o
+ * limite do plano (o admin amplia o contrato ao criar/ativar).
+ */
+const FiliaisDaLoja: React.FC<{
+  loja: LojistaFirestoreData;
+  onFechar: () => void;
+  onToast: (msg: string) => void;
+  onMudou: () => void;
+}> = ({ loja, onFechar, onToast, onMudou }) => {
+  const [lista, setLista] = useState<ListaUnidades | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  // onToast muda a cada render do pai; pela ref, um erro mostrado não dispara
+  // um novo carregamento (que falharia e mostraria o erro de novo, em ciclo).
+  const avisar = React.useRef(onToast);
+  avisar.current = onToast;
+  const recarregar = React.useCallback(async () => {
+    setCarregando(true);
+    const res = await listarUnidades(loja.id);
+    setCarregando(false);
+    if (res.sucesso) setLista(res);
+    else avisar.current(res.erro);
+  }, [loja.id]);
+
+  useEffect(() => {
+    recarregar();
+  }, [recarregar]);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm overflow-y-auto p-4 sm:p-8" onClick={onFechar}>
+      <div className="mx-auto max-w-5xl rounded-3xl border border-border bg-background p-5 sm:p-8 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <span className="label-eyebrow">Administração Boomii</span>
+            <h2 className="text-xl font-bold text-foreground truncate">Filiais de {loja.nome}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onFechar}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+            aria-label="Fechar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        {normalizarPlano(loja.financeiro?.plano) !== 'completo' && (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-400">
+            Esta loja está no plano {NOME_PLANO[normalizarPlano(loja.financeiro?.plano)]}: filiais extras ficam inativas
+            até ela passar para o Completo.
+          </p>
+        )}
+        <UnidadesPainel
+          lojaId={loja.id}
+          lista={lista}
+          carregando={carregando}
+          onMudou={() => {
+            recarregar();
+            onMudou();
+          }}
+          onToast={onToast}
+          modoAdmin
+        />
+      </div>
+    </div>
+  );
+};
 
 interface AdminContasProps {
   onNavigate: (tab: SiteNavTab) => void;
@@ -48,6 +126,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
     statusFinanceiro: 'adimplente' as 'adimplente' | 'inadimplente',
     premio: 'Recompensa Exclusiva (10º Selo)',
     corFundo: '#121215',
+    unidadesContratadas: 1,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -88,6 +167,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
       statusFinanceiro: 'adimplente',
       premio: 'Recompensa Exclusiva (10º Selo)',
       corFundo: '#121215',
+      unidadesContratadas: 1,
     });
     setModalOpen(true);
   };
@@ -104,6 +184,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
       statusFinanceiro: lojista.statusFinanceiro || 'adimplente',
       premio: lojista.layout?.premio || 'Recompensa Exclusiva (10º Selo)',
       corFundo: lojista.layout?.corFundo || '#121215',
+      unidadesContratadas: Number((lojista.financeiro as any)?.unidadesContratadas) || 1,
     });
     setModalOpen(true);
   };
@@ -140,7 +221,9 @@ export const AdminContas: React.FC<AdminContasProps> = ({
         financeiro: {
           status: formData.statusFinanceiro,
           plano,
-          valorMensal: PRECO_PLANO[plano],
+          // Só o Completo tem filiais; nos demais o contrato volta a 1 unidade.
+          unidadesContratadas: plano === 'completo' ? Math.max(1, Number(formData.unidadesContratadas) || 1) : 1,
+          valorMensal: mensalidadeDoPlano(plano, plano === 'completo' ? Number(formData.unidadesContratadas) || 1 : 1),
           bloqueadoPorInadimplencia: formData.statusFinanceiro === 'inadimplente',
           ...(rebaixouVisual ? { carenciaVisualAte: Date.now() + 30 * 24 * 60 * 60 * 1000 } : {}),
         } as any,
@@ -262,6 +345,19 @@ export const AdminContas: React.FC<AdminContasProps> = ({
   const totalAtivos = lojistas.filter((l) => l.statusFinanceiro === 'adimplente').length;
   const totalInadimplentes = lojistas.filter((l) => l.statusFinanceiro === 'inadimplente').length;
 
+  // Faturamento: mensalidade de cada loja adimplente (plano + unidades extras).
+  const mensalidadeDe = (l: LojistaFirestoreData) =>
+    mensalidadeDoPlano(normalizarPlano(l.financeiro?.plano), Number((l.financeiro as any)?.unidadesContratadas) || 1);
+  const faturamentoMensal = lojistas
+    .filter((l) => l.statusFinanceiro !== 'inadimplente')
+    .reduce((soma, l) => soma + mensalidadeDe(l), 0);
+  const lojasPorPlano = ORDEM_PLANOS.map((p) => ({
+    plano: p,
+    total: lojistas.filter((l) => normalizarPlano(l.financeiro?.plano) === p).length,
+  }));
+  const unidadesAguardando = lojistas.reduce((s, l) => s + (Number(l.unidadesResumo?.aguardando) || 0), 0);
+  const [lojaFiliais, setLojaFiliais] = useState<LojistaFirestoreData | null>(null);
+
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-[#EDEDED] font-sans antialiased flex flex-col">
       {/* Toast Alert */}
@@ -368,16 +464,30 @@ export const AdminContas: React.FC<AdminContasProps> = ({
 
           <div className="surface-panel p-5 rounded-2xl border border-border/60 relative overflow-hidden">
             <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
-              Status da Base Firebase
+              Faturamento mensal
             </div>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="h-3 w-3 rounded-full bg-emerald-400 animate-pulse" />
-              <div className="text-base font-bold text-foreground">Conectado</div>
+            <div className="text-3xl font-black text-primary tabular-nums">
+              {faturamentoMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
             </div>
             <span className="text-xs text-muted-foreground mt-1 block">
-              Projeto: mimo-2d6eb (BR)
+              Lojas adimplentes, com unidades extras
             </span>
           </div>
+        </div>
+
+        {/* Planos e filiais: quantas lojas em cada plano e o que espera liberação. */}
+        <div className="surface-panel rounded-2xl border border-border/60 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          {lojasPorPlano.map(({ plano, total }) => (
+            <span key={plano} className="text-muted-foreground">
+              <strong className="text-foreground">{NOME_PLANO[plano]}</strong> ({PRECO_PLANO[plano].toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}):{' '}
+              <strong className="text-foreground tabular-nums">{total}</strong> {total === 1 ? 'loja' : 'lojas'}
+            </span>
+          ))}
+          <span className={`ml-auto font-semibold ${unidadesAguardando ? 'text-amber-400' : 'text-muted-foreground'}`}>
+            {unidadesAguardando
+              ? `${unidadesAguardando} ${unidadesAguardando === 1 ? 'filial aguardando' : 'filiais aguardando'} sua liberação`
+              : 'Nenhuma filial aguardando liberação'}
+          </span>
         </div>
 
         {/* ── BARRA DE CONTROLE & AÇÕES ── */}
@@ -487,7 +597,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                     <th className="py-3.5 px-4">Loja / Marca</th>
                     <th className="py-3.5 px-4">ID Firestore (Slug)</th>
                     <th className="py-3.5 px-4">E-mail de Login</th>
-                    <th className="py-3.5 px-4">Senha Cadastrada</th>
+                    <th className="py-3.5 px-4">Unidades</th>
                     <th className="py-3.5 px-4">Plano</th>
                     <th className="py-3.5 px-4">Status Financeiro</th>
                     <th className="py-3.5 px-4 text-right">Ações</th>
@@ -542,35 +652,40 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                           </div>
                         </td>
 
-                        {/* Senha */}
-                        <td className="py-4 px-4 font-mono text-xs">
-                          <div className="inline-flex items-center gap-2 bg-background px-2.5 py-1 rounded-lg border border-border/60">
-                            <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
-                            <span className="font-bold text-foreground">
-                              {isPassVisible ? (
-                                lojista.senha || <span className="text-muted-foreground italic">sem senha</span>
-                              ) : (
-                                '••••••••'
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(lojista.id)}
-                              className="text-muted-foreground hover:text-foreground cursor-pointer"
-                              title={isPassVisible ? 'Ocultar senha' : 'Ver senha'}
-                            >
-                              {isPassVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
+                        {/* Unidades (filiais) */}
+                        <td className="py-4 px-4 text-xs">
+                          {(() => {
+                            const resumo = lojista.unidadesResumo;
+                            const contratadas = Number((lojista.financeiro as any)?.unidadesContratadas) || 1;
+                            const ativas = Number(resumo?.ativas) || 1;
+                            const aguardando = Number(resumo?.aguardando) || 0;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setLojaFiliais(lojista)}
+                                className="inline-flex flex-col items-start gap-0.5 cursor-pointer hover:text-primary"
+                                title="Ver e gerenciar as unidades desta loja"
+                              >
+                                <span className="font-bold text-foreground tabular-nums">
+                                  {ativas}/{contratadas} {contratadas === 1 ? 'contratada' : 'contratadas'}
+                                </span>
+                                {aguardando > 0 && (
+                                  <span className="text-[10px] font-bold text-amber-400">{aguardando} aguardando liberação</span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </td>
 
-                        {/* Plano */}
+                        {/* Plano e mensalidade */}
                         <td className="py-4 px-4">
                           <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-secondary text-foreground border border-border/50">
                             {NOME_PLANO[normalizarPlano(lojista.financeiro?.plano)]}
                           </span>
+                          <span className="block text-[11px] text-muted-foreground mt-1 tabular-nums">
+                            {mensalidadeDe(lojista).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}/mês
+                          </span>
                         </td>
-
                         {/* Status Financeiro */}
                         <td className="py-4 px-4">
                           <button
@@ -600,6 +715,16 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                             >
                               <span>Acessar Painel</span>
                               <ChevronRight className="w-3 h-3" />
+                            </button>
+
+                            {/* Filiais */}
+                            <button
+                              type="button"
+                              onClick={() => setLojaFiliais(lojista)}
+                              className="p-1.5 rounded-lg bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                              title="Unidades e filiais"
+                            >
+                              <Building2 className="w-3.5 h-3.5" />
                             </button>
 
                             {/* Editar */}
@@ -632,6 +757,16 @@ export const AdminContas: React.FC<AdminContasProps> = ({
           )}
         </div>
       </main>
+
+      {/* ── FILIAIS DE UMA LOJA ── */}
+      {lojaFiliais && (
+        <FiliaisDaLoja
+          loja={lojaFiliais}
+          onFechar={() => setLojaFiliais(null)}
+          onToast={showToast}
+          onMudou={carregarLojistas}
+        />
+      )}
 
       {/* ── MODAL CADASTRO / EDIÇÃO DE LOJISTA ── */}
       {modalOpen && (
@@ -733,6 +868,41 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                     <option value="adimplente">Adimplente (Liberado)</option>
                     <option value="inadimplente">Inadimplente (Bloqueado)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Filiais: só no Completo. 1 unidade inclusa, cada extra soma à mensalidade. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                {normalizarPlano(formData.plano) === 'completo' ? (
+                  <div>
+                    <label className="label-eyebrow block mb-1.5">Unidades contratadas</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={formData.unidadesContratadas}
+                      onChange={(e) =>
+                        setFormData({ ...formData, unidadesContratadas: Math.max(1, Number(e.target.value) || 1) })
+                      }
+                      className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm text-foreground outline-none focus:border-primary"
+                    />
+                    <span className="text-[11px] text-muted-foreground mt-1 block">
+                      1 inclusa · extra R$ {PRECO_UNIDADE_EXTRA}/mês cada
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Filiais só no plano Completo. Neste plano a loja opera com 1 unidade.
+                  </p>
+                )}
+                <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+                  <span className="text-[11px] text-muted-foreground block">Mensalidade</span>
+                  <strong className="text-lg text-primary tabular-nums">
+                    {mensalidadeDoPlano(
+                      normalizarPlano(formData.plano),
+                      normalizarPlano(formData.plano) === 'completo' ? formData.unidadesContratadas : 1
+                    ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </strong>
                 </div>
               </div>
 

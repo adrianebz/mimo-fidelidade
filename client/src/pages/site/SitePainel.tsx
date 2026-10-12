@@ -60,6 +60,7 @@ import {
   MoreVertical,
   BarChart3,
   Download,
+  Building2,
 } from "lucide-react";
 import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
@@ -69,8 +70,10 @@ import { ExportarClientesModal } from "../../components/ExportarClientesModal.js
 import { urlCadastroCliente } from "../../siteConfig.js";
 import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../planos.js";
 import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
+import { UnidadesPainel } from "../../components/UnidadesPainel.js";
+import { listarUnidades, ListaUnidades } from "../../services/boomiiWalletService.js";
 
-type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos";
+type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos" | "unidades";
 
 /**
  * Navegação do painel, declarada uma vez só.
@@ -96,7 +99,11 @@ const ITENS_NAV: Array<{
   { id: "identidade", rotulo: "Identidade do Cartão", rotuloCurto: "Cartão", Icone: Palette },
   { id: "itens", rotulo: "Itens Participantes", rotuloCurto: "Itens", Icone: ShoppingBag },
   { id: "produtos", rotulo: "Mais Vendidos", rotuloCurto: "Vendas", Icone: TrendingUp },
+  { id: "unidades", rotulo: "Unidades", rotuloCurto: "Unidades", Icone: Building2 },
 ];
+
+/** Abas do gerente de filial: só a operação do balcão. */
+const ABAS_GERENTE: DashboardTab[] = ["visao-geral", "clientes", "aniversarios"];
 
 interface Customer {
   id: string;
@@ -182,7 +189,16 @@ interface ProgramItem {
   revenue: number;
 }
 
-export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSair: () => void }> = ({ onNavigate, onSair }) => {
+export const SitePainel: React.FC<{
+  onNavigate: (tab: SiteNavTab) => void;
+  onSair: () => void;
+  /** Papel de quem está logado; "gerente" = gerente de filial. */
+  papel?: "admin" | "lojista" | "gerente" | null;
+  /** Unidade do gerente de filial (vem do token). */
+  unidadeGerente?: string;
+}> = ({ onNavigate, onSair, papel, unidadeGerente }) => {
+  const ehGerente = papel === "gerente";
+  const itensNav = ehGerente ? ITENS_NAV.filter((i) => ABAS_GERENTE.includes(i.id)) : ITENS_NAV;
   const [currentTab, setCurrentTab] = useState<DashboardTab>("visao-geral");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedUnit, setSelectedUnit] = useState("Loja Principal");
@@ -266,6 +282,48 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   /** Plano comercial da loja (Essencial/Pro/Completo) — só para exibir cadeados. */
   const [plano, setPlano] = useState<Plano>("pro");
   const pode = (recurso: Recurso) => temRecurso(plano, recurso);
+
+  // ── Unidades (filiais) ──
+  // Dono: escolhe no topo em qual unidade está atendendo (fica salvo neste
+  // aparelho). Gerente: sempre a unidade dele, que vem do token.
+  const [listaUnidades, setListaUnidades] = useState<ListaUnidades | null>(null);
+  const [carregandoUnidades, setCarregandoUnidades] = useState(false);
+  const [unidadeEscolhida, setUnidadeEscolhida] = useState<string>(() => {
+    try {
+      return localStorage.getItem("boomii_unidade_atendimento") || "principal";
+    } catch {
+      return "principal";
+    }
+  });
+  const unidadeAtendimento = ehGerente ? unidadeGerente || "principal" : unidadeEscolhida;
+  const unidadesAtivas = (listaUnidades?.unidades || []).filter((u) => u.status === "ativa");
+  const nomeUnidadeAtual = (listaUnidades?.unidades || []).find((u) => u.id === unidadeAtendimento)?.nome;
+
+  const recarregarUnidades = React.useCallback(async () => {
+    if (!currentSlug) return;
+    setCarregandoUnidades(true);
+    const res = await listarUnidades(currentSlug);
+    setCarregandoUnidades(false);
+    if (res.sucesso) setListaUnidades(res);
+  }, [currentSlug]);
+
+  useEffect(() => {
+    if (papel && (ehGerente || plano === "completo")) recarregarUnidades();
+  }, [papel, plano, ehGerente, recarregarUnidades]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("boomii_unidade_atendimento", unidadeEscolhida);
+    } catch {}
+  }, [unidadeEscolhida]);
+
+  // A unidade escolhida foi desativada: volta para a principal.
+  useEffect(() => {
+    if (listaUnidades && !ehGerente && !unidadesAtivas.some((u) => u.id === unidadeEscolhida)) {
+      setUnidadeEscolhida("principal");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listaUnidades]);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState("");
@@ -629,6 +687,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
         qr: qrText.trim(),
         lojaId: currentSlug,
         quantidade: selosPorLeitura,
+        unidadeId: unidadeAtendimento,
       });
 
       setLastStampResult(result);
@@ -775,10 +834,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
 
   const handleRedeemReward = async (customerId: string) => {
     try {
-      const cartaoId = lastStampResult?.cartaoId || `${currentSlug}_${customerId}_1`;
+      // Sempre o cartão do cliente clicado. Antes usava o do ÚLTIMO carimbo
+      // (lastStampResult): carimbar A e resgatar B tirava o prêmio de A.
+      const cartaoId = `${currentSlug}_${customerId}_1`;
       const res = await resgatarPremio({
         cartaoId,
         lojaId: currentSlug,
+        unidadeId: unidadeAtendimento,
       });
 
       setCustomers((prev) =>
@@ -973,7 +1035,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {ITENS_NAV.map(({ id, rotulo, Icone }) => {
+          {itensNav.map(({ id, rotulo, Icone }) => {
             const ativo = currentTab === id;
             return (
               <button
@@ -1073,7 +1135,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 <h1 className="font-bold text-foreground text-base tracking-tight truncate">
                   <span className="lg:hidden">{cardConfig.storeName}</span>
                   <span className="hidden lg:inline">
-                    {ITENS_NAV.find((i) => i.id === currentTab)?.rotulo}
+                    {itensNav.find((i) => i.id === currentTab)?.rotulo}
                   </span>
                 </h1>
                 {financialStatus === "inadimplente" && (
@@ -1081,6 +1143,32 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                     <Lock className="h-2.5 w-2.5" />
                     Conta bloqueada
                   </span>
+                )}
+                {/* Unidade do atendimento: o gerente vê a dele; o dono escolhe
+                    (só aparece com mais de uma unidade ativa). */}
+                {ehGerente && nomeUnidadeAtual && (
+                  <span className="text-[11px] font-semibold text-primary flex items-center gap-1 truncate">
+                    <Building2 className="h-3 w-3 shrink-0" />
+                    {nomeUnidadeAtual}
+                  </span>
+                )}
+                {!ehGerente && unidadesAtivas.length > 1 && (
+                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground max-w-[200px]">
+                    <Building2 className="h-3 w-3 shrink-0 text-primary" />
+                    <span className="sr-only">Unidade do atendimento</span>
+                    <select
+                      value={unidadeEscolhida}
+                      onChange={(e) => setUnidadeEscolhida(e.target.value)}
+                      className="bg-transparent font-semibold text-primary outline-none cursor-pointer truncate min-w-0"
+                      title="Unidade onde os carimbos e resgates estão sendo feitos"
+                    >
+                      {unidadesAtivas.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
               </div>
             </div>
@@ -1240,7 +1328,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 <button
                   type="button"
                   onClick={() => {
-                    const url = urlCadastroCliente(currentSlug);
+                    const url = urlCadastroCliente(currentSlug, unidadeAtendimento);
                     navigator.clipboard.writeText(url);
                     showToast("Link de cadastro copiado para o clipboard!");
                   }}
@@ -1250,7 +1338,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   <span>Copiar Link</span>
                 </button>
                 <a
-                  href={urlCadastroCliente(currentSlug)}
+                  href={urlCadastroCliente(currentSlug, unidadeAtendimento)}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-boomii px-4 py-2 text-xs font-bold flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-md cursor-pointer"
@@ -1390,7 +1478,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(urlCadastroCliente(currentSlug));
+                          navigator.clipboard.writeText(urlCadastroCliente(currentSlug, unidadeAtendimento));
                           showToast("Link de cadastro copiado!");
                         }}
                         className="btn-boomii-ghost text-xs py-1.5 px-3.5"
@@ -1777,6 +1865,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">
+                {/* A planilha tem dados pessoais da rede toda: só o dono baixa. */}
+                {!ehGerente && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1789,6 +1879,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   {pode("exportarClientes") ? <Download className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                   <span>Planilha</span>
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1817,7 +1908,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   <button
                     type="button"
                     onClick={() => {
-                      const url = urlCadastroCliente(currentSlug);
+                      const url = urlCadastroCliente(currentSlug, unidadeAtendimento);
                       navigator.clipboard.writeText(url);
                       showToast("Link de cadastro copiado!");
                     }}
@@ -1935,6 +2026,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                                       )}
                                       <span>Ver ficha</span>
                                     </button>
+                                    {/* Editar/excluir: só o dono (o servidor também recusa o gerente). */}
+                                    {!ehGerente && (
                                     <button
                                       type="button"
                                       role="menuitem"
@@ -1948,6 +2041,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                                       <Edit3 className="w-4 h-4 text-muted-foreground" />
                                       <span>Editar dados</span>
                                     </button>
+                                    )}
                                     <button
                                       type="button"
                                       role="menuitem"
@@ -2187,7 +2281,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
 
             {/* Configurações de Notificações na Carteira */}
-            {pode("textosPersonalizados") ? (
+            {/* Gerente de filial não edita as regras: são da marca toda. */}
+            {!ehGerente && (pode("textosPersonalizados") ? (
             <div className="surface-panel p-4 sm:p-6 rounded-2xl space-y-6 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/40 pb-4">
                 <div>
@@ -2694,8 +2789,35 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 titulo="Avisos automáticos que trazem o cliente de volta"
                 descricao="No seu plano, o cliente recebe o aviso de Prêmio liberado. No Pro, a carteira também avisa a cada selo, quando falta pouco para o prêmio, no aniversário (com selo de presente) e lembra quem não retirou o prêmio — com os textos da sua loja."
               />
-            )}
+            ))}
           </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            ABA: UNIDADES (filiais — plano Completo)
+           ═══════════════════════════════════════════════════════════════ */}
+        {currentTab === "unidades" && !ehGerente && (
+          pode("filiais") ? (
+            <UnidadesPainel
+              lojaId={currentSlug}
+              lista={listaUnidades}
+              carregando={carregandoUnidades}
+              onMudou={recarregarUnidades}
+              onToast={showToast}
+            />
+          ) : (
+            <div className="space-y-5 animate-fade-in">
+              <div>
+                <span className="label-eyebrow">Rede</span>
+                <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">Unidades</h1>
+              </div>
+              <RecursoBloqueado
+                recurso="filiais"
+                titulo="Filiais com um cartão só para a rede"
+                descricao="Cadastre as unidades da sua marca: o cliente acumula e resgata em qualquer uma, cada unidade tem link e QR de cadastro próprios, gerente com acesso só à unidade dele, e você compara o movimento de cada uma."
+              />
+            </div>
+          )
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
@@ -2811,7 +2933,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
           centro e é elevado: é a ação repetida dezenas de vezes por dia. */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/40 bg-card/95 backdrop-blur-xl">
         <div className="flex items-end justify-around px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
-          {ITENS_NAV.filter((i) => i.noRodape).slice(0, 2).map(({ id, rotuloCurto, Icone }) => {
+          {itensNav.filter((i) => i.noRodape).slice(0, 2).map(({ id, rotuloCurto, Icone }) => {
             const ativo = currentTab === id;
             return (
               <button
@@ -2843,7 +2965,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             <span className="text-[10px] font-bold text-primary">Ler QR</span>
           </button>
 
-          {ITENS_NAV.filter((i) => i.noRodape).slice(2).map(({ id, rotuloCurto, Icone }) => {
+          {itensNav.filter((i) => i.noRodape).slice(2).map(({ id, rotuloCurto, Icone }) => {
             const ativo = currentTab === id;
             return (
               <button
@@ -2866,7 +2988,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             onClick={() => setGavetaAberta(true)}
             aria-expanded={gavetaAberta}
             className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl min-w-[64px] transition-colors cursor-pointer ${
-              ITENS_NAV.some((i) => !i.noRodape && i.id === currentTab)
+              itensNav.some((i) => !i.noRodape && i.id === currentTab)
                 ? "text-primary"
                 : "text-muted-foreground"
             }`}

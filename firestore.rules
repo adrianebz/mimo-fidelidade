@@ -23,6 +23,15 @@ service cloud.firestore {
         && request.auth.token.lojaId == lojaId;
     }
 
+    // Gerente de filial: opera o balcão da loja enquanto a unidade dele
+    // estiver ativa. Desativar a unidade (ou trocar de plano) corta o acesso.
+    function isGerente(lojaId) {
+      return request.auth != null
+        && request.auth.token.role == 'gerente'
+        && request.auth.token.lojaId == lojaId
+        && get(/databases/$(database)/documents/lojistas/$(lojaId)/unidades/$(request.auth.token.unidadeId)).data.status == 'ativa';
+    }
+
     // Configuração pública da loja (nome, cores, logo, textos do cartão): a
     // página de cadastro do cliente (/c/{slug}) precisa ler isso sem login,
     // então o read continua público. Escrita só pelo dono ou pelo admin.
@@ -32,7 +41,8 @@ service cloud.firestore {
     // é legado — os PINs agora vivem em /privado, gravados pelo servidor.
     function alteraCampoDoAdmin() {
       return request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['financeiro', 'statusFinanceiro', 'ativo', 'email', 'operadores', 'criadoEm']);
+        .hasAny(['financeiro', 'statusFinanceiro', 'ativo', 'email', 'operadores', 'criadoEm',
+                 'unidadesResumo', 'designPlanoSuperior', 'layoutPlanoSuperior']);
     }
 
     match /lojistas/{lojaId} {
@@ -44,7 +54,16 @@ service cloud.firestore {
       // pessoal sob LGPD): só o lojista dono ou o admin podem ler. Escrita
       // só pelas Cloud Functions (nunca direto do navegador).
       match /clientes/{clienteId} {
-        allow read: if isAdmin() || isLojista(lojaId);
+        // O cartão vale na rede toda: o gerente atende clientes de qualquer unidade.
+        allow read: if isAdmin() || isLojista(lojaId) || isGerente(lojaId);
+        allow write: if false;
+      }
+
+      // Unidades: gravadas só pelas Cloud Functions (limite do plano e
+      // aprovação do admin). O gerente lê apenas a própria.
+      match /unidades/{unidadeId} {
+        allow read: if isAdmin() || isLojista(lojaId)
+          || (isGerente(lojaId) && request.auth.token.unidadeId == unidadeId);
         allow write: if false;
       }
 
@@ -63,7 +82,8 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (request.auth != null
             && request.auth.token.role == 'lojista'
-            && request.auth.token.lojaId == resource.data.lojaId);
+            && request.auth.token.lojaId == resource.data.lojaId)
+        || isGerente(resource.data.lojaId);
       allow write: if false;
 
       match /eventos/{eventoId} {

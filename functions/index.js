@@ -12,6 +12,7 @@ const notificacoes = require('./notificacoes');
 const operadores = require('./operadores');
 const planos = require('./planos');
 const metricas = require('./metricas');
+const unidades = require('./unidades');
 
 if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
@@ -30,6 +31,11 @@ async function autorizarBalcao(req, db, lojaId, pin, acao) {
   if (dono) {
     const ident = await operadores.identificarOperador(db, lojaId, pin);
     return ident || { uid: req.auth.uid, operador: { nome: 'Lojista' } };
+  }
+  // Gerente de filial logado: opera o balcão da própria loja (a unidade
+  // ativa é conferida em unidades.resolverAtendimento).
+  if (claims.role === 'gerente' && claims.lojaId === lojaId) {
+    return { uid: req.auth.uid, operador: { nome: claims.email ? `Gerente (${claims.email})` : 'Gerente' } };
   }
   if (!pin) {
     throw new HttpsError('permission-denied', `Entre como lojista ou informe o PIN do operador para ${acao}.`);
@@ -340,6 +346,14 @@ exports.sincronizarClasse = onDocumentWritten(
     // gravação dispara este trigger de novo, que sincroniza o visual certo.
     if (await aplicarVisualDoPlano(event.data.after.ref, loja)) return;
 
+    // Saiu do Completo: filiais extras ficam inativas (histórico mantido).
+    try {
+      const desativadas = await unidades.aplicarPlano(admin.firestore(), event.params.lojaId, loja);
+      if (desativadas) console.log(`Plano sem filiais: ${desativadas} unidade(s) de ${event.params.lojaId} desativadas.`);
+    } catch (err) {
+      console.warn('Unidades: falha ao aplicar o plano', err.message);
+    }
+
     // Guarda contra auto-disparo infinito: esta function grava 'wallet.classId' e
     // 'wallet.classSincronizadaEm' no próprio documento que a disparou. Sem esta
     // checagem, cada gravação reativa a function indefinidamente (e reprocessa o
@@ -499,7 +513,7 @@ exports.provisionarLojista = onCall(
 exports.criarCartao = onCall(
   { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
   async (req) => {
-    const { lojaId, nome, celular, email, aniversario, consentimento } = req.data || {};
+    const { lojaId, nome, celular, email, aniversario, consentimento, unidadeId } = req.data || {};
 
     if (!consentimento) {
       throw new HttpsError('failed-precondition', 'Consentimento LGPD obrigatório.');
@@ -575,7 +589,13 @@ exports.criarCartao = onCall(
         );
       }
     } else {
-      await clienteRef.set(clientePayload);
+      // Unidade do link de cadastro (?u=). Inválida ou inativa: principal.
+      const unidadeCadastro = await unidades.resolverAtendimento(db, lojaId, loja, null, unidadeId);
+      clientePayload.unidadeCadastro = unidadeCadastro;
+      const lote = db.batch();
+      lote.set(clienteRef, clientePayload);
+      unidades.contarCliente(lote, db, lojaId, unidadeCadastro.id);
+      await lote.commit();
     }
     const dadosCliente = clienteSnap.exists ? clienteSnap.data() : clientePayload;
 
@@ -623,6 +643,9 @@ exports.criarCartao = onCall(
       clienteEmail: dadosCliente.email,
       clienteAniversario: dadosCliente.aniversario || null,
       clienteCelular: tel.number,
+      // Onde o cliente se cadastrou (aparece no campo "Unidade" do passe).
+      unidadeId: dadosCliente.unidadeCadastro?.id || unidades.PRINCIPAL,
+      unidade: dadosCliente.unidadeCadastro?.nome || loja.nome || '',
       ciclo,
       selos: 0,
       meta,
@@ -664,7 +687,7 @@ exports.criarCartao = onCall(
 exports.carimbar = onCall(
   { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
   async (req) => {
-    const { qr, pin, lojaId: lojaIdParam, manualCardId, quantidade } = req.data || {};
+    const { qr, pin, lojaId: lojaIdParam, manualCardId, quantidade, unidadeId } = req.data || {};
 
     let cartaoId = manualCardId;
     let codigo = null;
@@ -700,6 +723,10 @@ exports.carimbar = onCall(
     const { uid, operador } = await autorizarBalcao(
       req, db, previa.get('lojaId') || lojaIdParam, pin, 'registrar o selo'
     );
+    // Unidade onde o carimbo acontece (gerente: a dele; dono: a escolhida).
+    const lojaIdPrevia = previa.get('lojaId') || lojaIdParam;
+    const lojaPrevia = (await db.doc(`lojistas/${lojaIdPrevia}`).get()).data() || {};
+    const unidade = await unidades.resolverAtendimento(db, lojaIdPrevia, lojaPrevia, req.auth?.token, unidadeId);
 
     return db.runTransaction(async (tx) => {
       const cartaoSnap = await tx.get(cartaoRef);
@@ -829,8 +856,12 @@ exports.carimbar = onCall(
         excedenteReservado: excedente,
         selosAntes,
         selosDepois: novosSelos,
+        lojaId,
+        unidadeId: unidade.id,
+        unidadeNome: unidade.nome,
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
+      unidades.contarCarimbo(tx, db, lojaId, unidade.id);
 
       return {
         cartaoId,
@@ -963,7 +994,7 @@ async function atualizarObjetoGoogle(cartaoId, depois, objectId) {
 exports.resgatar = onCall(
   { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
   async (req) => {
-    const { cartaoId, pin, lojaId: lojaIdParam } = req.data || {};
+    const { cartaoId, pin, lojaId: lojaIdParam, unidadeId } = req.data || {};
     if (!cartaoId) throw new HttpsError('invalid-argument', 'cartaoId obrigatório.');
 
     const db = admin.firestore();
@@ -974,6 +1005,9 @@ exports.resgatar = onCall(
     const { uid, operador } = await autorizarBalcao(
       req, db, previa.get('lojaId') || lojaIdParam, pin, 'resgatar o prêmio'
     );
+    const lojaIdPrevia = previa.get('lojaId') || lojaIdParam;
+    const lojaPrevia = (await db.doc(`lojistas/${lojaIdPrevia}`).get()).data() || {};
+    const unidade = await unidades.resolverAtendimento(db, lojaIdPrevia, lojaPrevia, req.auth?.token, unidadeId);
 
     return db.runTransaction(async (tx) => {
       const cartaoSnap = await tx.get(cartaoRef);
@@ -1002,6 +1036,8 @@ exports.resgatar = onCall(
         ciclo: cartao.ciclo || 1,
         operadorUid: uid,
         operadorNome: operador.nome,
+        unidadeId: unidade.id,
+        unidadeNome: unidade.nome,
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -1047,6 +1083,9 @@ exports.resgatar = onCall(
         premio,
         cicloResgatado: cartao.ciclo || 1,
         selosTransportados: selosIniciais,
+        lojaId,
+        unidadeId: unidade.id,
+        unidadeNome: unidade.nome,
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -1250,11 +1289,13 @@ function normalizarAniversario(valor) {
  * Loja sobre a qual o pedido pode agir. Lojista mexe só na própria loja (o
  * lojaId vem do token, não do pedido); admin pode agir em qualquer uma.
  */
-function lojaDoPedido(claims, lojaIdParam, acao) {
+function lojaDoPedido(claims, lojaIdParam, acao, permiteGerente = false) {
   let lojaId;
   if (claims.role === 'admin') {
     lojaId = lojaIdParam;
-  } else if (claims.role === 'lojista') {
+  } else if (claims.role === 'lojista' || (permiteGerente && claims.role === 'gerente')) {
+    // Gerente de filial: só operações de balcão (carimbo, resgate, ficha,
+    // reenvio) — nunca gestão (editar/excluir, planilha, unidades, visual).
     lojaId = claims.lojaId;
     if (lojaIdParam && lojaIdParam !== lojaId) {
       throw new HttpsError('permission-denied', `Você só pode ${acao} clientes da sua loja.`);
@@ -1454,7 +1495,7 @@ exports.excluirCliente = onCall(
 exports.fichaCliente = onCall({ region: 'southamerica-east1' }, async (req) => {
   const claims = req.auth?.token || {};
   const { lojaId: lojaIdParam, clienteId } = req.data || {};
-  const lojaId = lojaDoPedido(claims, lojaIdParam, 'ver');
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'ver', true);
   if (!lojaId || !clienteId) throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
 
   const db = admin.firestore();
@@ -1529,6 +1570,257 @@ exports.exportarClientes = onCall(
   }
 );
 
+// ─── Unidades (filiais) e gerentes ───────────────────────────────────────────
+//
+// Cadastro de filiais: exclusivo do Completo (o admin pode sempre). Limite =
+// financeiro.unidadesContratadas (Completo inclui 1, + R$ 79/mês por extra).
+// Unidade criada pelo lojista além do contratado fica "aguardando" até o admin
+// liberar — é o admin quem controla a cobrança.
+
+async function carregarLoja(db, lojaId) {
+  const snap = await db.doc(`lojistas/${lojaId}`).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
+  return snap.data() || {};
+}
+
+async function contarAtivas(db, lojaId, excetoId) {
+  const snap = await unidades.colecao(db, lojaId).where('status', '==', 'ativa').get();
+  return snap.docs.filter((d) => d.id !== excetoId).length;
+}
+
+/** Admin ampliou o limite: grava as unidades contratadas e a nova mensalidade. */
+async function ampliarContratadas(db, lojaId, loja, novoTotal) {
+  const plano = planos.planoDaLoja(loja);
+  await db.doc(`lojistas/${lojaId}`).set(
+    { financeiro: { unidadesContratadas: novoTotal, valorMensal: unidades.mensalidade(plano, novoTotal) } },
+    { merge: true }
+  );
+}
+
+exports.listarUnidades = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'ver as unidades de', true);
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  const lista = await unidades.listar(db, lojaId, loja);
+  const mes = unidades.mesAtual();
+  const plano = planos.planoDaLoja(loja);
+  const contratadas = unidades.contratadas(loja);
+  // Gerente vê só a própria unidade.
+  const visiveis = claims.role === 'gerente' ? lista.filter((u) => u.id === claims.unidadeId) : lista;
+  return {
+    plano,
+    contratadas,
+    mensalidade: unidades.mensalidade(plano, contratadas),
+    unidades: visiveis.map((u) => ({
+      id: u.id,
+      nome: u.nome || '',
+      endereco: u.endereco || '',
+      cidade: u.cidade || '',
+      whatsapp: u.whatsapp || '',
+      principal: !!u.principal,
+      status: u.status || 'ativa',
+      motivoInativa: u.motivoInativa || null,
+      gerenteEmail: u.gerenteEmail || null,
+      clientes: Number(u.contagem?.clientes) || 0,
+      carimbosMes: Number(u.contagem?.carimbos?.[mes]) || 0,
+    })),
+  };
+});
+
+exports.salvarUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'gerenciar as unidades de');
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const ehAdmin = claims.role === 'admin';
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  const dados = unidades.validarDados(req.data || {});
+  const unidadeId = req.data?.unidadeId ? String(req.data.unidadeId) : null;
+
+  // Edição (a principal pode ser renomeada em qualquer plano).
+  if (unidadeId) {
+    if (!ehAdmin && unidadeId !== unidades.PRINCIPAL) planos.exigirRecurso(loja, 'filiais', 'O cadastro de filiais');
+    const r = unidades.ref(db, lojaId, unidadeId);
+    if (!(await r.get()).exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+    await r.update({ ...dados, atualizadaEm: admin.firestore.FieldValue.serverTimestamp() });
+    return { sucesso: true, id: unidadeId };
+  }
+
+  // Criação
+  if (!ehAdmin) planos.exigirRecurso(loja, 'filiais', 'O cadastro de filiais');
+  await unidades.garantirPrincipal(db, lojaId, loja);
+  const ativas = await contarAtivas(db, lojaId);
+  const contratadas = unidades.contratadas(loja);
+  let status = 'ativa';
+  if (ativas >= contratadas) {
+    if (ehAdmin) await ampliarContratadas(db, lojaId, loja, ativas + 1);
+    else status = 'aguardando';
+  }
+  const id = await unidades.novoId(db, lojaId, dados.nome);
+  await unidades.ref(db, lojaId, id).set({
+    ...dados,
+    principal: false,
+    status,
+    criadaEm: admin.firestore.FieldValue.serverTimestamp(),
+    criadaPor: req.auth.uid,
+  });
+  await unidades.atualizarResumo(db, lojaId);
+  return { sucesso: true, id, status };
+});
+
+exports.alterarStatusUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'gerenciar as unidades de');
+  const unidadeId = String(req.data?.unidadeId || '');
+  const ativar = !!req.data?.ativa;
+  if (!lojaId || !unidadeId) throw new HttpsError('invalid-argument', 'Loja e unidade são obrigatórias.');
+  if (unidadeId === unidades.PRINCIPAL && !ativar) {
+    throw new HttpsError('failed-precondition', 'A unidade principal não pode ser desativada.');
+  }
+  const ehAdmin = claims.role === 'admin';
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  if (!ehAdmin) planos.exigirRecurso(loja, 'filiais', 'O cadastro de filiais');
+  const r = unidades.ref(db, lojaId, unidadeId);
+  if (!(await r.get()).exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+
+  if (ativar) {
+    const ativas = await contarAtivas(db, lojaId, unidadeId);
+    const contratadas = unidades.contratadas(loja);
+    if (ativas >= contratadas) {
+      if (!ehAdmin) {
+        throw new HttpsError(
+          'resource-exhausted',
+          `Seu plano tem ${contratadas} ${contratadas === 1 ? 'unidade contratada' : 'unidades contratadas'}. ` +
+            `Peça à Boomii a liberação de mais uma (+ R$ ${planos.PRECOS.unidadeExtra}/mês).`
+        );
+      }
+      await ampliarContratadas(db, lojaId, loja, ativas + 1);
+    }
+  }
+  await r.update({
+    status: ativar ? 'ativa' : 'inativa',
+    motivoInativa: ativar ? admin.firestore.FieldValue.delete() : 'manual',
+    atualizadaEm: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await unidades.atualizarResumo(db, lojaId);
+  return { sucesso: true };
+});
+
+/** Admin libera uma unidade que o lojista criou além do contratado. */
+exports.aprovarUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
+  if (req.auth?.token?.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Só o administrador da Boomii libera unidades extras.');
+  }
+  const { lojaId, unidadeId } = req.data || {};
+  if (!lojaId || !unidadeId) throw new HttpsError('invalid-argument', 'Loja e unidade são obrigatórias.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  const r = unidades.ref(db, lojaId, String(unidadeId));
+  const snap = await r.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+
+  const ativas = await contarAtivas(db, lojaId, snap.id);
+  const novoTotal = Math.max(unidades.contratadas(loja), ativas + 1);
+  await ampliarContratadas(db, lojaId, loja, novoTotal);
+  await r.update({ status: 'ativa', aprovadaEm: admin.firestore.FieldValue.serverTimestamp(), aprovadaPor: req.auth.uid });
+  await unidades.atualizarResumo(db, lojaId);
+  await db.collection('auditoria').add({
+    tipo: 'unidade_aprovada',
+    lojaId,
+    unidadeId: snap.id,
+    unidadesContratadas: novoTotal,
+    por: req.auth.uid,
+    em: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { sucesso: true, unidadesContratadas: novoTotal };
+});
+
+/**
+ * Convida o gerente de uma unidade: cria (ou reaproveita) a conta e grava as
+ * claims role=gerente + lojaId + unidadeId. A senha ele mesmo cria pelo link
+ * de redefinição — o painel dispara o e-mail e também mostra o link para
+ * mandar pelo WhatsApp.
+ */
+exports.convidarGerente = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'convidar gerentes para');
+  const unidadeId = String(req.data?.unidadeId || '');
+  const email = String(req.data?.email || '').trim().toLowerCase();
+  if (!lojaId || !unidadeId) throw new HttpsError('invalid-argument', 'Loja e unidade são obrigatórias.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpsError('invalid-argument', 'E-mail inválido.');
+
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  if (claims.role !== 'admin') planos.exigirRecurso(loja, 'filiais', 'O gerente de filial');
+  const r = unidades.ref(db, lojaId, unidadeId);
+  const unidadeSnap = await r.get();
+  if (!unidadeSnap.exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+  if (unidadeSnap.get('status') !== 'ativa') throw new HttpsError('failed-precondition', 'Ative a unidade antes de convidar o gerente.');
+
+  let user;
+  try {
+    user = await admin.auth().getUserByEmail(email);
+    const atuais = user.customClaims || {};
+    if (atuais.role === 'admin' || atuais.role === 'lojista') {
+      throw new HttpsError('already-exists', 'Este e-mail já é usado por um lojista ou administrador. Use outro.');
+    }
+    if (atuais.role === 'gerente' && atuais.lojaId !== lojaId) {
+      throw new HttpsError('already-exists', 'Este e-mail já é gerente em outra loja.');
+    }
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    if (err.code !== 'auth/user-not-found') throw err;
+    user = await admin.auth().createUser({ email, password: crypto.randomBytes(24).toString('base64url') });
+  }
+
+  // Um gerente por unidade: o anterior perde o acesso.
+  const anterior = unidadeSnap.get('gerenteUid');
+  if (anterior && anterior !== user.uid) {
+    await admin.auth().setCustomUserClaims(anterior, null).catch(() => {});
+    await admin.auth().revokeRefreshTokens(anterior).catch(() => {});
+  }
+  await admin.auth().setCustomUserClaims(user.uid, { role: 'gerente', lojaId, unidadeId });
+  await r.update({ gerenteEmail: email, gerenteUid: user.uid, gerenteDesde: admin.firestore.FieldValue.serverTimestamp() });
+
+  let link = null;
+  try {
+    link = await admin.auth().generatePasswordResetLink(email);
+  } catch (err) {
+    console.warn('convidarGerente: link de senha não gerado', err.message);
+  }
+  await db.collection('auditoria').add({
+    tipo: 'gerente_convidado',
+    lojaId,
+    unidadeId,
+    gerenteUid: user.uid,
+    por: req.auth.uid,
+    em: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { sucesso: true, link };
+});
+
+exports.removerGerente = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'gerenciar os gerentes de');
+  const unidadeId = String(req.data?.unidadeId || '');
+  if (!lojaId || !unidadeId) throw new HttpsError('invalid-argument', 'Loja e unidade são obrigatórias.');
+  const db = admin.firestore();
+  const r = unidades.ref(db, lojaId, unidadeId);
+  const snap = await r.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+  const uid = snap.get('gerenteUid');
+  if (uid) {
+    await admin.auth().setCustomUserClaims(uid, null).catch(() => {});
+    await admin.auth().revokeRefreshTokens(uid).catch(() => {});
+  }
+  const apagar = admin.firestore.FieldValue.delete();
+  await r.update({ gerenteEmail: apagar, gerenteUid: apagar, gerenteDesde: apagar });
+  return { sucesso: true };
+});
+
 /**
  * Reenvio do cartão para um cliente que trocou de aparelho.
  *
@@ -1546,7 +1838,7 @@ const REENVIO_DIAS = 7;
 exports.gerarLinkReenvio = onCall({ region: 'southamerica-east1' }, async (req) => {
   const claims = req.auth?.token || {};
   const { lojaId: lojaIdParam, clienteId } = req.data || {};
-  const lojaId = lojaDoPedido(claims, lojaIdParam, 'reenviar o cartão de');
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'reenviar o cartão de', true);
   if (!lojaId || !clienteId) {
     throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
   }
