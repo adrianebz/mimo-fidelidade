@@ -34,6 +34,7 @@ const RECURSOS = {
     operadores: false,
     campanhas: false,
     semMarca: false,
+    itensFixos: false,
   },
   pro: {
     variosSelosPorLeitura: true,
@@ -51,6 +52,7 @@ const RECURSOS = {
     operadores: false,
     campanhas: false,
     semMarca: false,
+    itensFixos: false,
   },
   completo: {
     variosSelosPorLeitura: true,
@@ -68,6 +70,7 @@ const RECURSOS = {
     operadores: true,
     campanhas: true,
     semMarca: true,
+    itensFixos: true,
   },
 };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, RefreshCw, AlertCircle, Award, Gift, Cake, Smartphone } from 'lucide-react';
+import { X, RefreshCw, AlertCircle, Award, Gift, Cake, Smartphone, ShoppingBag } from 'lucide-react';
 import { obterFichaCliente, MetricasCliente, EventoFicha } from '../services/boomiiWalletService.js';
 
 interface Props {
@@ -28,7 +28,15 @@ const Numero: React.FC<{ rotulo: string; valor: React.ReactNode; detalhe?: strin
   </div>
 );
 
+/** "Cookie Nutella ×2, Água ×1" — o que foi comprado (Itens Fixos). */
+function listaItens(e: EventoFicha): string {
+  return (e.itens || []).map((i) => `${i.nome} ×${i.qtd}`).join(', ');
+}
+
 function descreverEvento(e: EventoFicha): { Icone: React.ComponentType<{ className?: string }>; texto: string; cor: string } {
+  if (e.tipo === 'venda') {
+    return { Icone: ShoppingBag, texto: `Comprou ${listaItens(e) || 'itens'} (sem selo)`, cor: 'text-muted-foreground' };
+  }
   if (e.tipo === 'resgate') {
     return { Icone: Gift, texto: `Resgatou ${e.premio || 'a recompensa'}${e.ciclo ? ` (${e.ciclo}º ciclo)` : ''}`, cor: 'text-emerald-500' };
   }
@@ -36,9 +44,10 @@ function descreverEvento(e: EventoFicha): { Icone: React.ComponentType<{ classNa
     return { Icone: Cake, texto: `Presente de aniversário: +${e.selos ?? 0} ${e.selos === 1 ? 'selo' : 'selos'}`, cor: 'text-primary' };
   }
   const qtd = e.selos ?? 1;
+  const comprou = listaItens(e);
   return {
     Icone: Award,
-    texto: `+${qtd} ${qtd === 1 ? 'selo' : 'selos'}${e.saldo !== undefined ? ` · saldo ${e.saldo}` : ''}`,
+    texto: `+${qtd} ${qtd === 1 ? 'selo' : 'selos'}${e.saldo !== undefined ? ` · saldo ${e.saldo}` : ''}${comprou ? ` · ${comprou}` : ''}`,
     cor: 'text-primary',
   };
 }
@@ -147,6 +156,14 @@ export const FichaClienteModal: React.FC<Props> = ({ lojaId, cliente, onFechar }
                 />
                 <Numero rotulo="Primeira visita" valor={data(estado.m.primeiraVisita)} />
               </div>
+
+              {estado.m.produtoFavorito && (
+                <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm">
+                  <ShoppingBag className="w-4 h-4 text-primary shrink-0" />
+                  <span className="text-muted-foreground">Produto favorito:</span>
+                  <strong className="text-foreground truncate">{estado.m.produtoFavorito}</strong>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Histórico</h3>

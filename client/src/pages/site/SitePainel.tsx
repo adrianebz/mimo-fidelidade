@@ -71,7 +71,10 @@ import { urlCadastroCliente } from "../../siteConfig.js";
 import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../planos.js";
 import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
 import { UnidadesPainel } from "../../components/UnidadesPainel.js";
-import { listarUnidades, ListaUnidades } from "../../services/boomiiWalletService.js";
+import { listarUnidades, ListaUnidades, listarItens, ListaItens } from "../../services/boomiiWalletService.js";
+import { ItensPainel } from "../../components/ItensPainel.js";
+import { MaisVendidosPainel } from "../../components/MaisVendidosPainel.js";
+import { CarrinhoItens, selosDoCarrinho } from "../../components/CarrinhoItens.js";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase.js";
 
@@ -338,6 +341,31 @@ export const SitePainel: React.FC<{
       (err) => console.warn("Plano da loja: escuta em tempo real indisponível:", err.message)
     );
   }, [currentSlug, aplicarDadosDaLoja]);
+
+  // ── Itens Fixos (Completo) ──
+  // Carrinho = itens marcados para a compra atual; vai junto com o carimbo e
+  // o servidor calcula os selos a partir do cadastro.
+  const [listaItens, setListaItens] = useState<ListaItens | null>(null);
+  const [carregandoItens, setCarregandoItens] = useState(false);
+  const [carrinho, setCarrinho] = useState<Record<string, number>>({});
+  const modoItens = pode("itensFixos") && listaItens?.modalidade === "itens";
+  const itensAtivos = (listaItens?.itens || []).filter((i) => i.ativo);
+
+  const recarregarItens = React.useCallback(async () => {
+    if (!currentSlug) return;
+    setCarregandoItens(true);
+    const res = await listarItens(currentSlug);
+    setCarregandoItens(false);
+    if (res.sucesso) setListaItens(res);
+  }, [currentSlug]);
+
+  useEffect(() => {
+    if (papel && plano === "completo") recarregarItens();
+    else {
+      setListaItens(null);
+      setCarrinho({});
+    }
+  }, [papel, plano, recarregarItens]);
 
   // ── Unidades (filiais) ──
   // Dono: escolhe no topo em qual unidade está atendendo (fica salvo neste
@@ -729,15 +757,27 @@ export const SitePainel: React.FC<{
       return;
     }
 
+    // Itens Fixos: a compra precisa estar marcada antes da leitura.
+    const itensDaCompra = Object.entries(carrinho).map(([id, qtd]) => ({ id, qtd }));
+    if (modoItens && itensDaCompra.length === 0) {
+      showToast("Marque os itens desta compra antes de ler o QR do cliente.");
+      return;
+    }
+
     setIsProcessingStamp(true);
     try {
       const result = await carimbarSelo({
         qr: qrText.trim(),
         lojaId: currentSlug,
-        quantidade: selosPorLeitura,
+        ...(modoItens ? { itens: itensDaCompra } : { quantidade: selosPorLeitura }),
         unidadeId: unidadeAtendimento,
       });
 
+      if (modoItens) {
+        // Compra registrada: limpa o carrinho e atualiza as vendas do mês.
+        setCarrinho({});
+        recarregarItens();
+      }
       setLastStampResult(result);
       playSuccessSound(result.completo);
       navigator.vibrate?.(200);
@@ -767,7 +807,9 @@ export const SitePainel: React.FC<{
         ? ` (${result.excedente} guardado${result.excedente > 1 ? 's' : ''} para o próximo ciclo)`
         : '';
 
-      if (result.completo) {
+      if (creditados === 0) {
+        showToast("✅ Venda registrada (itens que não pontuam).");
+      } else if (result.completo) {
         showToast(`🎉 Cartela completa! Prêmio liberado: ${result.premio}!${sufixoExcedente}`);
       } else if (creditados > 1) {
         showToast(`✅ ${creditados} selos registrados — ${result.selos}/${result.meta}${sufixoExcedente}`);
@@ -780,6 +822,13 @@ export const SitePainel: React.FC<{
       setIsProcessingStamp(false);
     }
   };
+
+  // A câmera é ligada uma vez e guarda a função do momento em que abriu. Pela
+  // ref, cada leitura usa a versão atual — com a quantidade de selos, os itens
+  // marcados e a unidade escolhidos DEPOIS de abrir a câmera (antes, valia o
+  // que estava na tela quando ela ligou).
+  const processStampRef = useRef(processStamp);
+  processStampRef.current = processStamp;
 
   // Real Camera Lifecycle (Html5Qrcode)
   useEffect(() => {
@@ -822,7 +871,7 @@ export const SitePainel: React.FC<{
             if (!isMounted) return;
             try {
               await scanner.pause();
-              await processStamp(decodedText);
+              await processStampRef.current(decodedText);
               setTimeout(() => {
                 if (isMounted && html5QrCodeRef.current) {
                   try {
@@ -1660,229 +1709,31 @@ export const SitePainel: React.FC<{
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
-            ABA 3: ITENS PARTICIPANTES (Vendas Gerais vs Itens Fixos)
+            ABA 3: ITENS PARTICIPANTES (Vendas Gerais vs Itens Fixos — Completo)
            ═══════════════════════════════════════════════════════════════ */}
-        {currentTab === "itens" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-5">
+        {currentTab === "itens" && !ehGerente && (
+          pode("itensFixos") ? (
+            <ItensPainel
+              lojaId={currentSlug}
+              lista={listaItens}
+              carregando={carregandoItens}
+              onMudou={recarregarItens}
+              onToast={showToast}
+            />
+          ) : (
+            <div className="space-y-5 animate-fade-in">
               <div>
-                <span className="label-eyebrow text-primary">Regras do Programa</span>
-                <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">
-                  Itens Participantes dos Selos
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Defina se qualquer venda no caixa gera selo (Vendas Gerais) ou se apenas itens fixos definidos pontuam.
-                </p>
+                <span className="label-eyebrow text-primary">Regras do programa</span>
+                <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">Itens Participantes</h1>
               </div>
-
-              {programMode === "itens-fixos" && (
-                <button
-                  type="button"
-                  onClick={() => setNewItemModal(true)}
-                  className="btn-boomii self-start sm:self-auto text-xs py-2.5 px-4 font-bold cursor-pointer flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Cadastrar Novo Item</span>
-                </button>
-              )}
+              <RecursoBloqueado
+                recurso="itensFixos"
+                titulo="Saiba o que cada cliente compra"
+                descricao="Cadastre o cardápio e, no balcão, marque os itens da compra antes de ler o QR — uma leitura por compra (3 cookies = 3 selos). Você passa a ver os produtos mais vendidos por mês e por unidade e o produto favorito de cada cliente."
+              />
             </div>
-
-            {/* Switcher: Vendas Gerais vs Itens Fixos Definidos */}
-            <div className="surface-panel p-6 rounded-2xl space-y-4 border border-border/60">
-              <span className="label-eyebrow text-muted-foreground">MODALIDADE DE PONTUAÇÃO</span>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Opção 1: Vendas Gerais */}
-                <div
-                  onClick={() => {
-                    setProgramMode("geral");
-                    showToast("Modo alterado para Vendas Gerais: qualquer compra no caixa gera selo.");
-                  }}
-                  className={`p-5 rounded-2xl border transition-all cursor-pointer relative ${
-                    programMode === "geral"
-                      ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary"
-                      : "border-border/60 hover:bg-card/60 bg-card/30"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold ${
-                        programMode === "geral" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                      }`}>
-                        🏪
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-foreground text-base">Vendas Gerais</h3>
-                        <span className="text-xs text-muted-foreground">Qualquer compra gera selo</span>
-                      </div>
-                    </div>
-                    {programMode === "geral" && (
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                        <Check className="w-3 h-3" />
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                    Ideal para operações rápidas. Toda vez que o operador lê o QR Code do cliente no caixa, o cliente ganha +1 selo, independente dos produtos adquiridos.
-                  </p>
-                </div>
-
-                {/* Opção 2: Itens Fixos Definidos */}
-                <div
-                  onClick={() => {
-                    setProgramMode("itens-fixos");
-                    showToast("Modo alterado para Itens Fixos: apenas os produtos cadastrados geram selos.");
-                  }}
-                  className={`p-5 rounded-2xl border transition-all cursor-pointer relative ${
-                    programMode === "itens-fixos"
-                      ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary"
-                      : "border-border/60 hover:bg-card/60 bg-card/30"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold ${
-                        programMode === "itens-fixos" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                      }`}>
-                        ☕
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-foreground text-base">Itens Fixos Definidos</h3>
-                        <span className="text-xs text-muted-foreground">Controle por produto vendido</span>
-                      </div>
-                    </div>
-                    {programMode === "itens-fixos" && (
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                        <Check className="w-3 h-3" />
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                    O lojista cadastra os itens participantes do cardápio. Permite controlar o ranking de produtos mais vendidos e definir regras de selos por produto.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Modo Geral: Banner Informativo */}
-            {programMode === "geral" && (
-              <div className="surface-panel p-8 rounded-2xl text-center space-y-3 border border-emerald-500/30">
-                <div className="h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto text-xl font-bold">
-                  ✓
-                </div>
-                <h3 className="text-xl font-bold text-foreground">Modo Vendas Gerais Ativado</h3>
-                <p className="text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed">
-                  Sua loja está configurada para conceder selos em qualquer compra no caixa. Não é necessário selecionar itens específicos para cada atendimento.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setProgramMode("itens-fixos")}
-                  className="btn-boomii-ghost text-xs py-2 px-4 mt-2"
-                >
-                  Alternar para Itens Fixos Definidos
-                </button>
-              </div>
-            )}
-
-            {/* Modo Itens Fixos: Tabela de Itens Cadastrados */}
-            {programMode === "itens-fixos" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <h2 className="text-lg font-bold text-foreground">Itens Participantes Cadastrados ({programItems.length})</h2>
-                    <p className="text-xs text-muted-foreground">Gerencie os produtos que geram selos e acompanhe as saídas no balcão.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setNewItemModal(true)}
-                    className="btn-boomii text-xs py-2 px-3.5 font-bold cursor-pointer"
-                  >
-                    + Novo Item
-                  </button>
-                </div>
-
-                {programItems.length === 0 ? (
-                  <div className="surface-panel p-10 rounded-2xl text-center space-y-4 border border-border/60">
-                    <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
-                      <ShoppingBag className="w-7 h-7" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-bold text-foreground">Nenhum item participante cadastrado</h3>
-                      <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                        Cadastre os produtos do cardápio da sua loja que concedem selos aos clientes ou utilize a modalidade Vendas Gerais.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setNewItemModal(true)}
-                      className="btn-boomii text-xs py-2.5 px-5 font-bold mx-auto cursor-pointer"
-                    >
-                      + Cadastrar Primeiro Item
-                    </button>
-                  </div>
-                ) : (
-                  <div className="surface-panel rounded-2xl overflow-hidden border border-border/60">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold border-b border-border/60">
-                          <tr>
-                            <th className="py-3 px-4">Item do Cardápio</th>
-                            <th className="py-3 px-4">Categoria</th>
-                            <th className="py-3 px-4">Preço Unitário</th>
-                            <th className="py-3 px-4">Selos Concedidos</th>
-                            <th className="py-3 px-4">Selos Gerados</th>
-                            <th className="py-3 px-4">Status</th>
-                            <th className="py-3 px-4 text-right">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/40">
-                          {programItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-card/40 transition-colors">
-                              <td className="py-3.5 px-4 font-bold text-foreground">{item.name}</td>
-                              <td className="py-3.5 px-4 text-xs text-muted-foreground">{item.category}</td>
-                              <td className="py-3.5 px-4 text-xs font-mono font-semibold">R$ {item.price.toFixed(2)}</td>
-                              <td className="py-3.5 px-4">
-                                <span className="text-xs font-bold text-primary px-2 py-0.5 rounded bg-primary/10">
-                                  +{item.stampsGiven} {item.stampsGiven === 1 ? "selo" : "selos"}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4 text-xs font-semibold text-foreground">
-                                {item.totalStampsGenerated || 0} selos
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleItemActive(item.id)}
-                                  className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-all cursor-pointer ${
-                                    item.active
-                                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                      : "bg-muted text-muted-foreground border border-border/40"
-                                  }`}
-                                >
-                                  {item.active ? "Ativo" : "Pausado"}
-                                </button>
-                              </td>
-                              <td className="py-3.5 px-4 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => deleteProgramItem(item.id)}
-                                  className="text-muted-foreground hover:text-destructive p-1.5 transition-colors cursor-pointer"
-                                  title="Excluir item participante"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )
         )}
-
         {/* ═══════════════════════════════════════════════════════════════
             ABA 4: CLIENTES
            ═══════════════════════════════════════════════════════════════ */}
@@ -2869,111 +2720,25 @@ export const SitePainel: React.FC<{
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
-            ABA 6: MAIS VENDIDOS & SAÍDAS (Conectado aos Itens)
+            ABA 6: MAIS VENDIDOS (ranking real dos Itens Fixos — Completo)
            ═══════════════════════════════════════════════════════════════ */}
-        {currentTab === "produtos" && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {currentTab === "produtos" && !ehGerente && (
+          pode("itensFixos") ? (
+            <MaisVendidosPainel lojaId={currentSlug} unidades={unidadesAtivas} />
+          ) : (
+            <div className="space-y-5 animate-fade-in">
               <div>
-                <span className="label-eyebrow text-primary">Saídas & Movimentação</span>
-                <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">
-                  Produtos Mais Vendidos no Programa
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {programMode === "itens-fixos"
-                    ? "Desempenho dos itens fixos participantes configurados na loja."
-                    : "Desempenho geral de vendas no programa de fidelidade."}
-                </p>
+                <span className="label-eyebrow text-primary">Análise</span>
+                <h1 className="text-3xl font-black text-foreground tracking-tight mt-1">Mais Vendidos</h1>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setCurrentTab("itens")}
-                className="btn-boomii-ghost self-start sm:self-auto text-xs py-2 px-3.5 font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <ShoppingBag className="w-3.5 h-3.5" />
-                <span>Configurar Itens Participantes</span>
-              </button>
+              <RecursoBloqueado
+                recurso="itensFixos"
+                titulo="Ranking dos produtos mais vendidos"
+                descricao="Com os Itens Fixos, cada compra registra o que foi vendido: veja o ranking do mês, por unidade, e o faturamento estimado de cada produto."
+              />
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {programItems.length === 0 ? (
-                <div className="lg:col-span-8 surface-panel p-10 rounded-2xl text-center space-y-4 border border-border/60">
-                  <ShoppingBag className="w-10 h-10 text-muted-foreground mx-auto" />
-                  <h3 className="text-base font-bold text-foreground">Nenhum produto com movimentação registrada</h3>
-                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    Cadastre itens participantes na aba anterior para acompanhar o ranking de saídas e estimativa de faturamento.
-                  </p>
-                </div>
-              ) : (
-                <div className="lg:col-span-8 surface-panel rounded-2xl overflow-hidden border border-border/60">
-                  <div className="p-4 border-b border-border/40 flex items-center justify-between">
-                    <h2 className="font-bold text-foreground text-sm">Ranking de Saídas por Selos</h2>
-                    <span className="text-xs text-muted-foreground">Últimos 30 dias</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        <tr>
-                          <th className="py-3 px-4">#</th>
-                          <th className="py-3 px-4">Item do Cardápio</th>
-                          <th className="py-3 px-4">Categoria</th>
-                          <th className="py-3 px-4">Selos Gerados</th>
-                          <th className="py-3 px-4 text-right">Faturamento Estimado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/40">
-                        {programItems.map((prod, index) => (
-                          <tr key={prod.id} className="hover:bg-card/40 transition-colors">
-                            <td className="py-3.5 px-4 font-bold text-primary text-xs">#{index + 1}</td>
-                            <td className="py-3.5 px-4">
-                              <span className="font-bold text-foreground block">{prod.name}</span>
-                              <div className="w-32 bg-muted rounded-full h-1 mt-1.5 overflow-hidden">
-                                <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, ((prod.totalStampsGenerated || 0) / 100) * 100)}%` }} />
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-4 text-xs text-muted-foreground">{prod.category}</td>
-                            <td className="py-3.5 px-4 font-semibold text-foreground text-xs">{prod.totalStampsGenerated || 0} selos</td>
-                            <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-400 text-xs">
-                              R$ {((prod.revenue || (prod.totalStampsGenerated || 0) * prod.price)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              <div className="lg:col-span-4 space-y-4">
-                <div className="surface-panel p-5 rounded-2xl space-y-4">
-                  <h3 className="font-bold text-foreground text-sm">Resumo da Movimentação</h3>
-                  <div className="space-y-3 text-xs">
-                    <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                      <span className="text-muted-foreground">Modalidade Ativa</span>
-                      <span className="font-bold text-primary">
-                        {programMode === "itens-fixos" ? "Itens Fixos Definidos" : "Vendas Gerais"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                      <span className="text-muted-foreground">Clientes no Programa</span>
-                      <span className="font-bold text-foreground">{totalClientes} cadastrado(s)</span>
-                    </div>
-                    <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                      <span className="text-muted-foreground">Selos Totais Emitidos</span>
-                      <span className="font-bold text-emerald-400">{totalSelos} selos</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Brindes Liberados</span>
-                      <span className="font-bold text-primary">{recompensasProntas} brindes</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
+          )
+        )}      </main>
 
       {/* ── BARRA INFERIOR (CELULAR) ──
           Fica ao alcance do polegar porque o painel é usado em pé, no balcão,
@@ -3076,6 +2841,12 @@ export const SitePainel: React.FC<{
             </div>
 
             {/* Quantos selos esta leitura vai creditar */}
+            {/* Itens Fixos: marca-se a compra e lê-se o QR uma vez; senão, o seletor de selos. */}
+            {modoItens ? (
+              <div className="px-3 py-3 bg-card border-b border-border">
+                <CarrinhoItens itens={itensAtivos} carrinho={carrinho} onChange={setCarrinho} />
+              </div>
+            ) : (
             <div className="px-3 py-2.5 bg-card border-b border-border flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-foreground block">Selos por atendimento</span>
@@ -3128,6 +2899,7 @@ export const SitePainel: React.FC<{
                 </span>
               )}
             </div>
+            )}
 
             {/* Abas: Câmera vs Entrada Manual */}
             <div className="grid grid-cols-2 gap-2 bg-muted p-2 rounded-none border-b border-border/40 text-xs font-bold">
@@ -3234,7 +3006,9 @@ export const SitePainel: React.FC<{
                           <Plus className="w-4 h-4" />
                         )}
                         <span>
-                          Confirmar +{selosPorLeitura} {selosPorLeitura === 1 ? "selo" : "selos"}
+                          {modoItens
+                            ? `Confirmar compra (+${selosDoCarrinho(itensAtivos, carrinho)} ${selosDoCarrinho(itensAtivos, carrinho) === 1 ? "selo" : "selos"})`
+                            : `Confirmar +${selosPorLeitura} ${selosPorLeitura === 1 ? "selo" : "selos"}`}
                         </span>
                       </button>
                     </div>
@@ -3332,103 +3106,6 @@ export const SitePainel: React.FC<{
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: CADASTRAR NOVO ITEM PARTICIPANTE ── */}
-      {newItemModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="surface-panel p-6 sm:p-8 rounded-3xl max-w-md w-full space-y-5 border border-primary/40 shadow-2xl animate-fade-in relative">
-            <button
-              onClick={() => setNewItemModal(false)}
-              className="absolute top-5 right-5 text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">
-                <ShoppingBag className="w-3.5 h-3.5" />
-                <span>Cardápio Fidelizado</span>
-              </div>
-              <h3 className="text-xl font-bold text-foreground">Cadastrar Item Participante</h3>
-              <p className="text-xs text-muted-foreground">
-                Adicione um produto que pontuará no cartão ao ser adquirido pelo cliente.
-              </p>
-            </div>
-
-            <form onSubmit={handleAddProgramItem} className="space-y-4">
-              <div>
-                <label className="label-eyebrow block mb-1.5">Nome do Produto</label>
-                <input
-                  type="text"
-                  required
-                  value={newItemData.name}
-                  onChange={(e) => setNewItemData({ ...newItemData, name: e.target.value })}
-                  placeholder="Ex: Cappuccino Italiano Médio"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-eyebrow block mb-1.5">Categoria</label>
-                  <select
-                    value={newItemData.category}
-                    onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                  >
-                    <option value="Bebidas" className="bg-card">Bebidas</option>
-                    <option value="Salgados" className="bg-card">Salgados</option>
-                    <option value="Confeitaria" className="bg-card">Confeitaria</option>
-                    <option value="Combos" className="bg-card">Combos</option>
-                    <option value="Sobremesas" className="bg-card">Sobremesas</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label-eyebrow block mb-1.5">Preço Unitário (R$)</label>
-                  <input
-                    type="number"
-                    step="0.50"
-                    required
-                    value={newItemData.price}
-                    onChange={(e) => setNewItemData({ ...newItemData, price: e.target.value })}
-                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="label-eyebrow block mb-1.5">Selos Concedidos por Compra</label>
-                <select
-                  value={newItemData.stampsGiven}
-                  onChange={(e) => setNewItemData({ ...newItemData, stampsGiven: e.target.value })}
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary font-bold text-primary"
-                >
-                  <option value="1" className="bg-card">1 Selo (Padrão)</option>
-                  <option value="2" className="bg-card">2 Selos (Dobro / Combos)</option>
-                  <option value="3" className="bg-card">3 Selos (Promoção Especial)</option>
-                </select>
-              </div>
-
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="submit"
-                  className="btn-boomii flex-1 py-3 text-xs font-bold cursor-pointer"
-                >
-                  Salvar Item Participante
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewItemModal(false)}
-                  className="btn-boomii-ghost px-4 text-xs font-semibold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

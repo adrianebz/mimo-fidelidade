@@ -53,6 +53,7 @@ const planos: Array<{ nome: string; preco: string; resumo: string; itens: Item[]
       { texto: `Filiais: 1 unidade inclusa, + R$ ${PRECO_UNIDADE_EXTRA}/mês por unidade extra` },
       { texto: "Gerente de filial com acesso próprio" },
       { texto: "Planilha com as métricas de cada cliente" },
+      { texto: "Itens Fixos: o que cada cliente compra e os mais vendidos" },
       { texto: "Campanhas para grupos de clientes", emBreve: true },
       { texto: "Cartão sem a marca Boomii", emBreve: true },
       { texto: "Seu cartão criado pela nossa equipe" },

@@ -13,6 +13,7 @@ const operadores = require('./operadores');
 const planos = require('./planos');
 const metricas = require('./metricas');
 const unidades = require('./unidades');
+const itens = require('./itens');
 
 if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
@@ -728,6 +729,12 @@ exports.carimbar = onCall(
     const lojaPrevia = (await db.doc(`lojistas/${lojaIdPrevia}`).get()).data() || {};
     const unidade = await unidades.resolverAtendimento(db, lojaIdPrevia, lojaPrevia, req.auth?.token, unidadeId);
 
+    // Itens Fixos (Completo): a compra vem como lista de itens; os selos são
+    // calculados aqui, a partir do cadastro — nunca vêm prontos do balcão.
+    const porItens = itens.modoItens(lojaPrevia);
+    const venda = porItens ? await itens.carregarVenda(db, lojaIdPrevia, req.data?.itens) : null;
+    const mes = unidades.mesAtual();
+
     return db.runTransaction(async (tx) => {
       const cartaoSnap = await tx.get(cartaoRef);
       if (!cartaoSnap.exists) {
@@ -766,6 +773,33 @@ exports.carimbar = onCall(
         throw new HttpsError('failed-precondition', `Este cartão já está com status "${cartao.status}".`);
       }
 
+      // Compra só de itens que não dão selo (ex.: água): registra a venda
+      // para o Mais Vendidos, sem mexer na cartela nem na trava de intervalo.
+      if (venda && venda.selos === 0) {
+        tx.set(cartaoRef.collection('eventos').doc(), {
+          tipo: 'venda',
+          operadorUid: uid,
+          operadorNome: operador.nome || 'Balcão',
+          itens: venda.itens,
+          lojaId,
+          unidadeId: unidade.id,
+          unidadeNome: unidade.nome,
+          em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        itens.contarVenda(tx, db, lojaId, unidade.id, mes, venda.itens);
+        return {
+          cartaoId,
+          selos: cartao.selos || 0,
+          meta: cartao.meta || 10,
+          completo: false,
+          creditados: 0,
+          excedente: 0,
+          selosPendentes: cartao.selosPendentes || 0,
+          cliente: cartao.clienteId,
+          premio: loja.layout?.premio || '1 Recompensa Especial',
+        };
+      }
+
       // Trava anti-duplo-carimbo (intervalo mínimo)
       const agora = Date.now();
       const ultimo = cartao.ultimoSeloEm ? cartao.ultimoSeloEm.toMillis() : 0;
@@ -785,7 +819,10 @@ exports.carimbar = onCall(
       const maxPorLeitura = planos.temRecurso(loja, 'variosSelosPorLeitura')
         ? Math.max(1, Number(loja.design?.stamps?.maxPerScan ?? loja.regras?.maxSelosPorLeitura ?? 10))
         : 1;
-      const pedido = Math.floor(Number(quantidade ?? loja.design?.stamps?.perScan ?? 1));
+      // Por itens: a soma calculada no servidor. Vendas gerais: a quantidade do balcão.
+      const pedido = venda
+        ? venda.selos
+        : Math.floor(Number(quantidade ?? loja.design?.stamps?.perScan ?? 1));
 
       if (!Number.isFinite(pedido) || pedido < 1) {
         throw new HttpsError('invalid-argument', 'Quantidade de selos inválida.');
@@ -859,9 +896,11 @@ exports.carimbar = onCall(
         lojaId,
         unidadeId: unidade.id,
         unidadeNome: unidade.nome,
+        ...(venda ? { itens: venda.itens } : {}),
         em: admin.firestore.FieldValue.serverTimestamp(),
       });
       unidades.contarCarimbo(tx, db, lojaId, unidade.id);
+      if (venda) itens.contarVenda(tx, db, lojaId, unidade.id, mes, venda.itens);
 
       return {
         cartaoId,
@@ -1821,6 +1860,108 @@ exports.removerGerente = onCall({ region: 'southamerica-east1' }, async (req) =>
   const apagar = admin.firestore.FieldValue.delete();
   await r.update({ gerenteEmail: apagar, gerenteUid: apagar, gerenteDesde: apagar });
   return { sucesso: true };
+});
+
+// ─── Itens Fixos e Mais Vendidos (plano Completo) ────────────────────────────
+
+/**
+ * Itens da loja com as vendas de um mês (padrão: o atual). Serve o cadastro,
+ * a lista de itens do leitor e o ranking "Mais Vendidos".
+ */
+exports.listarItens = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'ver os itens de', true);
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  unidades.exigirGerenteNoPlano(claims, loja);
+
+  const mes = /^\d{4}-\d{2}$/.test(String(req.data?.mes || '')) ? req.data.mes : unidades.mesAtual();
+  const permitido = planos.temRecurso(loja, 'itensFixos');
+  if (!permitido) return { permitido, modalidade: 'geral', mes, itens: [] };
+
+  const snap = await itens.colecao(db, lojaId).get();
+  const lista = snap.docs
+    .map((d) => {
+      const v = d.data() || {};
+      const porUnidade = {};
+      for (const [u, meses] of Object.entries(v.vendasPorUnidade || {})) porUnidade[u] = Number(meses?.[mes]) || 0;
+      return {
+        id: d.id,
+        nome: v.nome || '',
+        categoria: v.categoria || 'Geral',
+        preco: v.preco ?? null,
+        selos: Number(v.selos) || 0,
+        ativo: v.ativo !== false,
+        vendasMes: Number(v.vendas?.[mes]) || 0,
+        vendasTotal: Object.values(v.vendas || {}).reduce((s, n) => s + (Number(n) || 0), 0),
+        vendasMesPorUnidade: porUnidade,
+      };
+    })
+    .sort((a, b) => b.vendasMes - a.vendasMes || a.nome.localeCompare(b.nome));
+  return { permitido, modalidade: itens.modoItens(loja) ? 'itens' : 'geral', mes, itens: lista };
+});
+
+exports.salvarItem = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'cadastrar itens de');
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  planos.exigirRecurso(loja, 'itensFixos', 'Os Itens Fixos');
+
+  const dados = itens.validarDados(req.data || {});
+  const ativo = req.data?.ativo !== false;
+  const itemId = req.data?.itemId ? String(req.data.itemId) : null;
+  if (itemId) {
+    const r = itens.colecao(db, lojaId).doc(itemId);
+    if (!(await r.get()).exists) throw new HttpsError('not-found', 'Item não encontrado.');
+    await r.update({ ...dados, ativo, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+    return { sucesso: true, id: itemId };
+  }
+  const r = await itens.colecao(db, lojaId).add({
+    ...dados,
+    ativo,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { sucesso: true, id: r.id };
+});
+
+/** Exclui só item que nunca vendeu — com vendas, pause (o histórico fica). */
+exports.excluirItem = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'excluir itens de');
+  const itemId = String(req.data?.itemId || '');
+  if (!lojaId || !itemId) throw new HttpsError('invalid-argument', 'Loja e item são obrigatórios.');
+  const db = admin.firestore();
+  const r = itens.colecao(db, lojaId).doc(itemId);
+  const snap = await r.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Item não encontrado.');
+  const vendas = Object.values(snap.get('vendas') || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+  if (vendas > 0) {
+    throw new HttpsError('failed-precondition', 'Este item já tem vendas registradas. Pause-o em vez de excluir, para manter o histórico.');
+  }
+  await r.delete();
+  return { sucesso: true };
+});
+
+/** Vendas Gerais (qualquer compra = selos do seletor) ou Itens Fixos. */
+exports.definirModalidade = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'configurar');
+  const modalidade = req.data?.modalidade === 'itens' ? 'itens' : 'geral';
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  if (modalidade === 'itens') {
+    planos.exigirRecurso(loja, 'itensFixos', 'Os Itens Fixos');
+    const ativos = await itens.colecao(db, lojaId).where('ativo', '==', true).limit(1).get();
+    if (ativos.empty) {
+      throw new HttpsError('failed-precondition', 'Cadastre ao menos um item ativo antes de ativar os Itens Fixos.');
+    }
+  }
+  await db.doc(`lojistas/${lojaId}`).set({ regras: { modalidade } }, { merge: true });
+  return { sucesso: true, modalidade };
 });
 
 /**

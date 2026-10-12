@@ -18,6 +18,11 @@ function ehCarimbo(e) {
   return String(e.tipo || '').startsWith('selo_');
 }
 
+/** Visita = carimbo ou compra registrada sem selo (Itens Fixos, ex.: só água). */
+function ehVisita(e) {
+  return ehCarimbo(e) || e.tipo === 'venda';
+}
+
 function selosDoEvento(e) {
   if (e.quantidadeCreditada !== undefined) return Number(e.quantidadeCreditada) || 0;
   return Math.max(0, (Number(e.selosDepois) || 0) - (Number(e.selosAntes) || 0));
@@ -48,8 +53,17 @@ function calcularMetricas(cliente, cartoes, eventos, periodo = {}) {
   const ate = Number(periodo.ate) || Infinity;
   const noPeriodo = (e) => e.emMs >= desde && e.emMs <= ate;
 
-  const carimbos = eventos.filter(ehCarimbo);
+  const carimbos = eventos.filter(ehVisita);
   const carimbosPeriodo = carimbos.filter(noPeriodo);
+
+  // Produto que o cliente mais leva (Itens Fixos), somando as quantidades.
+  const porProduto = {};
+  carimbos.forEach((e) =>
+    (e.itens || []).forEach((i) => {
+      if (i?.nome) porProduto[i.nome] = (porProduto[i.nome] || 0) + (Number(i.qtd) || 0);
+    })
+  );
+  const produtoFavorito = Object.entries(porProduto).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   const ganhosPeriodo = eventos
     .filter((e) => noPeriodo(e) && (ehCarimbo(e) || e.tipo === 'bonus_aniversario'))
     .reduce((soma, e) => soma + selosDoEvento(e), 0);
@@ -91,6 +105,7 @@ function calcularMetricas(cliente, cartoes, eventos, periodo = {}) {
     diasSemAparecer: ultima ? Math.floor((Date.now() - ultima) / DIA) : null,
     unidadeCadastro: cliente?.unidadeCadastro?.nome || ativo.unidade || '',
     unidadePreferida,
+    produtoFavorito,
     appleWallet: !!ativo.apple?.instalado,
     consentimentoLgpd: !!cliente?.consentimento?.aceito,
   };
@@ -110,6 +125,7 @@ function linhaDoTempo(eventos, limite = 40) {
       ciclo: e.cicloResgatado,
       operador: e.operadorNome,
       unidade: e.unidadeNome,
+      itens: Array.isArray(e.itens) ? e.itens.map((i) => ({ nome: i.nome, qtd: i.qtd })) : undefined,
     }));
 }
 
@@ -160,6 +176,7 @@ const COLUNAS = [
   ['Dias sem aparecer', (m) => m.diasSemAparecer ?? ''],
   ['Unidade de cadastro', (m) => m.unidadeCadastro],
   ['Unidade preferida', (m) => m.unidadePreferida],
+  ['Produto favorito', (m) => m.produtoFavorito],
   ['Apple Wallet', (m) => (m.appleWallet ? 'Sim' : 'Não')],
   ['Consentimento LGPD', (m) => (m.consentimentoLgpd ? 'Sim' : 'Não')],
 ];

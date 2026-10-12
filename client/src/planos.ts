@@ -22,7 +22,9 @@ export type Recurso =
   | 'filiais'
   | 'operadores'
   | 'campanhas'
-  | 'semMarca';
+  | 'semMarca'
+  /** Itens Fixos (produto vendido em cada carimbo) e o ranking Mais Vendidos. */
+  | 'itensFixos';
 
 export const ORDEM_PLANOS: Plano[] = ['essencial', 'pro', 'completo'];
 
@@ -59,6 +61,7 @@ const PRO: Record<Recurso, boolean> = {
   operadores: false,
   campanhas: false,
   semMarca: false,
+  itensFixos: false,
 };
 
 export const RECURSOS: Record<Plano, Record<Recurso, boolean>> = {

@@ -484,9 +484,11 @@ export async function carimbarSelo(params: {
   quantidade?: number;
   /** Unidade onde o atendimento acontece (filiais). Gerente: ignorado, vale a dele. */
   unidadeId?: string;
+  /** Itens Fixos: o que foi vendido (o servidor calcula os selos). */
+  itens?: ItemDaCompra[];
 }): Promise<StampResult> {
   const carimbarFn = httpsCallable<
-    { qr?: string; pin?: string; lojaId: string; manualCardId?: string; quantidade?: number; unidadeId?: string },
+    { qr?: string; pin?: string; lojaId: string; manualCardId?: string; quantidade?: number; unidadeId?: string; itens?: ItemDaCompra[] },
     StampResult
   >(functions, 'carimbar');
 
@@ -495,6 +497,7 @@ export async function carimbarSelo(params: {
     ...(params.pin ? { pin: params.pin } : {}),
     ...(params.quantidade && params.quantidade > 1 ? { quantidade: params.quantidade } : {}),
     ...(params.unidadeId ? { unidadeId: params.unidadeId } : {}),
+    ...(params.itens?.length ? { itens: params.itens } : {}),
     lojaId: params.lojaId,
   });
 
@@ -838,6 +841,66 @@ export async function excluirCliente(lojaId: string, clienteId: string): Promise
   }
 }
 
+// ─── Itens Fixos e Mais Vendidos (plano Completo) ────────────────────────────
+
+export interface ItemLoja {
+  id: string;
+  nome: string;
+  categoria: string;
+  preco: number | null;
+  /** Selos por unidade vendida (0 = registra a venda sem dar selo). */
+  selos: number;
+  ativo: boolean;
+  vendasMes: number;
+  vendasTotal: number;
+  vendasMesPorUnidade: Record<string, number>;
+}
+
+export interface ListaItens {
+  permitido: boolean;
+  modalidade: 'geral' | 'itens';
+  mes: string;
+  itens: ItemLoja[];
+}
+
+export interface DadosItem {
+  nome: string;
+  categoria?: string;
+  preco?: number | string | null;
+  selos: number;
+  ativo?: boolean;
+}
+
+/** Item marcado na compra, enviado junto com o carimbo. */
+export interface ItemDaCompra {
+  id: string;
+  qtd: number;
+}
+
+export const listarItens = (lojaId: string, mes?: string) =>
+  chamar<{ lojaId: string; mes?: string }, ListaItens>(
+    'listarItens',
+    { lojaId, ...(mes ? { mes } : {}) },
+    'Não foi possível carregar os itens.'
+  );
+
+export const salvarItem = (lojaId: string, dados: DadosItem, itemId?: string) =>
+  chamar<{ lojaId: string; itemId?: string } & DadosItem, { id: string }>(
+    'salvarItem',
+    { lojaId, ...dados, ...(itemId ? { itemId } : {}) },
+    'Não foi possível salvar o item.'
+  );
+
+export const excluirItem = (lojaId: string, itemId: string) =>
+  chamar<{ lojaId: string; itemId: string }, {}>('excluirItem', { lojaId, itemId }, 'Não foi possível excluir o item.');
+
+export const definirModalidade = (lojaId: string, modalidade: 'geral' | 'itens') =>
+  chamar<{ lojaId: string; modalidade: 'geral' | 'itens' }, { modalidade: 'geral' | 'itens' }>(
+    'definirModalidade',
+    { lojaId, modalidade },
+    'Não foi possível mudar a modalidade.'
+  );
+
 // ─── Unidades (filiais) e gerentes ───────────────────────────────────────────
 
 export interface Unidade {
@@ -961,6 +1024,10 @@ export interface MetricasCliente {
   diasSemAparecer: number | null;
   appleWallet: boolean;
   consentimentoLgpd: boolean;
+  unidadeCadastro?: string;
+  unidadePreferida?: string;
+  /** Itens Fixos: o produto que o cliente mais leva. */
+  produtoFavorito?: string;
 }
 
 export interface EventoFicha {
@@ -971,6 +1038,8 @@ export interface EventoFicha {
   premio?: string;
   ciclo?: number;
   operador?: string;
+  unidade?: string;
+  itens?: Array<{ nome: string; qtd: number }>;
 }
 
 /** Ficha do cliente (plano Pro+): métricas e linha do tempo. */
