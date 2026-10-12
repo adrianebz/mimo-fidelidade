@@ -1,6 +1,7 @@
 name: Build & Deploy iOS (App Store / Unlisted)
 
-# SEGURANÇA: Restrito a disparo manual autenticado por colaboradores do repositório
+# Dispara (1) sozinho a cada envio à main que mexa no app e (2) à mão, pela aba
+# Actions. SEGURANÇA: só quem tem acesso de escrita ao repositório dispara.
 on:
   workflow_dispatch:
     inputs:
@@ -10,24 +11,39 @@ on:
         type: boolean
         default: true
       build_number:
-        description: 'Número da Build (Incremental, ex: 1, 2, 3...)'
+        description: 'Número da Build (deixe em branco: é gerado automaticamente)'
         required: false
         type: string
         default: ''
+  # O app iOS empacota o painel (client/dist) no momento do build: sem isto,
+  # toda mudança publicada no site ficava fora do app até alguém rodar o
+  # workflow à mão. Agora cada envio que mexe no app gera uma build no TestFlight.
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - 'capacitor.config.ts'
+      - 'ios/**'
+      - 'package.json'
+      - '.github/workflows/deploy-ios.yml'
 
 # SEGURANÇA: Token do GitHub em modo somente leitura (Princípio do menor privilégio)
 permissions:
   contents: read
 
-# Evita deploys simultâneos conflitantes
+# Vários envios seguidos: só a versão mais nova vira build (as anteriores
+# em andamento são canceladas — não faz sentido mandar versões já superadas).
 concurrency:
   group: ios-deployment
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-ios:
     name: Compilar e Assinar iOS
     runs-on: macos-15 # Runner oficial macOS Sequoia com Xcode 16+ (SDK iOS recente exigido pela Apple)
+    env:
+      # No envio automático (push) sempre manda para o App Store Connect.
+      ENVIAR_APPSTORE: ${{ github.event_name == 'push' || inputs.upload_to_appstore }}
 
     steps:
       - name: Checkout do código
@@ -52,7 +68,7 @@ jobs:
           [ -z "$CERT_P12" ] && MISSING="$MISSING APPLE_CERTIFICATE_P12"
           [ -z "$CERT_PASS" ] && MISSING="$MISSING APPLE_CERTIFICATE_PASS"
           [ -z "$PROV_PROFILE" ] && MISSING="$MISSING APPLE_PROVISIONING_PROFILE"
-          if [ "${{ inputs.upload_to_appstore }}" = "true" ]; then
+          if [ "$ENVIAR_APPSTORE" = "true" ]; then
             [ -z "$APP_STORE_KEY" ] && MISSING="$MISSING APP_STORE_PRIVATE_KEY"
             [ -z "$KEY_ID" ] && MISSING="$MISSING APP_STORE_KEY_ID"
             [ -z "$ISSUER_ID" ] && MISSING="$MISSING APP_STORE_ISSUER_ID"
@@ -84,11 +100,18 @@ jobs:
           fi
           echo "Estrutura nativa do iOS verificada com sucesso."
 
+      # A Apple exige um número de build maior a cada envio. Sem número
+      # informado, usa 100 + o número desta execução do workflow: sempre cresce
+      # e nunca colide com as builds manuais antigas (abaixo de 100).
       - name: Configurar Número da Build
-        if: "${{ inputs.build_number != '' }}"
+        env:
+          BUILD_INFORMADO: ${{ inputs.build_number }}
+          EXECUCAO: ${{ github.run_number }}
         run: |
+          NUMERO="${BUILD_INFORMADO:-$((100 + EXECUCAO))}"
+          echo "Número da build: $NUMERO"
           cd ios/App
-          xcrun agvtool new-version -all "${{ inputs.build_number }}"
+          xcrun agvtool new-version -all "$NUMERO"
 
       - name: Instalar Certificado e Perfil no Chaveiro Temporário (Seguro)
         env:
@@ -183,7 +206,7 @@ jobs:
           retention-days: 7
 
       - name: Enviar para o App Store Connect
-        if: "${{ inputs.upload_to_appstore == true }}"
+        if: env.ENVIAR_APPSTORE == 'true'
         env:
           KEY_ID_RAW: ${{ secrets.APP_STORE_KEY_ID }}
           ISSUER_ID_RAW: ${{ secrets.APP_STORE_ISSUER_ID }}
