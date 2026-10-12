@@ -11,6 +11,7 @@ const { montarCamposDoPasse, paraTextModules, paraLabelValueRows, resolverCampos
 const notificacoes = require('./notificacoes');
 const operadores = require('./operadores');
 const planos = require('./planos');
+const metricas = require('./metricas');
 
 if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
@@ -1443,6 +1444,88 @@ exports.excluirCliente = onCall(
     }
 
     return { sucesso: true, carteirasAtualizadas };
+  }
+);
+
+/**
+ * Ficha do cliente (plano Pro+): métricas e linha do tempo de visitas,
+ * selos e resgates, a partir do histórico de eventos do cartão.
+ */
+exports.fichaCliente = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const { lojaId: lojaIdParam, clienteId } = req.data || {};
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'ver');
+  if (!lojaId || !clienteId) throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
+
+  const db = admin.firestore();
+  const loja = (await db.doc(`lojistas/${lojaId}`).get()).data() || {};
+  planos.exigirRecurso(loja, 'fichaCliente', 'A ficha do cliente');
+
+  const clienteSnap = await db.doc(`lojistas/${lojaId}/clientes/${clienteId}`).get();
+  if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado nesta loja.');
+
+  const { cartoes, eventos } = await metricas.carregarHistorico(db, lojaId, clienteId);
+  return {
+    metricas: metricas.calcularMetricas(clienteSnap.data(), cartoes, eventos),
+    linhaDoTempo: metricas.linhaDoTempo(eventos),
+  };
+});
+
+/**
+ * Planilha com as métricas de todos os clientes (plano Completo).
+ *
+ * Contém dados pessoais: só o dono da loja (ou admin) baixa, e cada download
+ * fica registrado na auditoria com quem baixou, quando e o período.
+ */
+exports.exportarClientes = onCall(
+  { region: 'southamerica-east1', timeoutSeconds: 300, memory: '512MiB' },
+  async (req) => {
+    const claims = req.auth?.token || {};
+    const { lojaId: lojaIdParam, desde, ate } = req.data || {};
+    const lojaId = lojaDoPedido(claims, lojaIdParam, 'exportar');
+    if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+
+    const db = admin.firestore();
+    const lojaSnap = await db.doc(`lojistas/${lojaId}`).get();
+    if (!lojaSnap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
+    planos.exigirRecurso(lojaSnap.data(), 'exportarClientes', 'A planilha de clientes');
+
+    const periodo = {
+      desde: Number(desde) || 0,
+      ate: Number(ate) || 0 || undefined,
+    };
+
+    const clientesSnap = await db.collection(`lojistas/${lojaId}/clientes`).get();
+    const linhas = [];
+    // Em lotes, para não abrir centenas de consultas ao mesmo tempo.
+    for (let i = 0; i < clientesSnap.docs.length; i += 15) {
+      const lote = clientesSnap.docs.slice(i, i + 15);
+      const calculados = await Promise.all(
+        lote.map(async (d) => {
+          const { cartoes, eventos } = await metricas.carregarHistorico(db, lojaId, d.id);
+          return metricas.calcularMetricas(d.data(), cartoes, eventos, periodo);
+        })
+      );
+      linhas.push(...calculados);
+    }
+    linhas.sort((a, b) => (b.ultimaVisita || 0) - (a.ultimaVisita || 0));
+
+    await db.collection('auditoria').add({
+      tipo: 'clientes_exportados',
+      lojaId,
+      total: linhas.length,
+      periodo: { desde: periodo.desde || null, ate: periodo.ate || null },
+      por: req.auth.uid,
+      papel: claims.role,
+      em: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    return {
+      csv: metricas.paraCSV(linhas),
+      total: linhas.length,
+      nomeArquivo: `clientes-${lojaId}-${hoje}.csv`,
+    };
   }
 );
 

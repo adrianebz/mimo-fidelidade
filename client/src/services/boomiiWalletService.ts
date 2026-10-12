@@ -835,6 +835,71 @@ function mensagemDoServidor(err: any, padrao: string): string {
   return conhecidos.includes(codigo) && err?.message ? err.message : padrao;
 }
 
+export interface MetricasCliente {
+  nome: string;
+  celular: string;
+  email: string;
+  aniversario: string;
+  cadastradoEm: number | null;
+  selosAtuais: number;
+  meta: number;
+  cicloAtual: number;
+  status: string;
+  visitas: number;
+  selosGanhos: number;
+  resgates: number;
+  primeiraVisita: number | null;
+  ultimaVisita: number | null;
+  frequenciaMediaDias: number | null;
+  diasSemAparecer: number | null;
+  appleWallet: boolean;
+  consentimentoLgpd: boolean;
+}
+
+export interface EventoFicha {
+  tipo: 'selo' | 'resgate' | 'bonus_aniversario' | string;
+  em: number | null;
+  selos?: number;
+  saldo?: number;
+  premio?: string;
+  ciclo?: number;
+  operador?: string;
+}
+
+/** Ficha do cliente (plano Pro+): métricas e linha do tempo. */
+export async function obterFichaCliente(
+  lojaId: string,
+  clienteId: string
+): Promise<{ sucesso: true; metricas: MetricasCliente; linhaDoTempo: EventoFicha[] } | { sucesso: false; erro: string }> {
+  try {
+    const fn = httpsCallable<{ lojaId: string; clienteId: string }, { metricas: MetricasCliente; linhaDoTempo: EventoFicha[] }>(
+      functions,
+      'fichaCliente'
+    );
+    const { data } = await fn({ lojaId, clienteId });
+    return { sucesso: true, ...data };
+  } catch (err: any) {
+    return { sucesso: false, erro: mensagemDoServidor(err, 'Não foi possível abrir a ficha agora.') };
+  }
+}
+
+/** Planilha com as métricas de todos os clientes (plano Completo). */
+export async function exportarClientes(
+  lojaId: string,
+  periodo: { desde?: number; ate?: number }
+): Promise<{ sucesso: true; csv: string; total: number; nomeArquivo: string } | { sucesso: false; erro: string }> {
+  try {
+    const fn = httpsCallable<
+      { lojaId: string; desde?: number; ate?: number },
+      { csv: string; total: number; nomeArquivo: string }
+    >(functions, 'exportarClientes', { timeout: 300000 });
+    const { data } = await fn({ lojaId, ...periodo });
+    return { sucesso: true, ...data };
+  } catch (err: any) {
+    return { sucesso: false, erro: mensagemDoServidor(err, 'Não foi possível gerar a planilha agora.') };
+  }
+}
+
 /**
  * Gera o link para o cliente adicionar de novo o MESMO cartão (troca de
  * aparelho). Só o lojista logado gera; o link vale alguns dias.

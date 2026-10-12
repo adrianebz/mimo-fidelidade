@@ -58,10 +58,14 @@ import {
   Menu,
   RotateCcw,
   MoreVertical,
+  BarChart3,
+  Download,
 } from "lucide-react";
 import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
 import { ReenviarCartaoModal } from "../../components/ReenviarCartaoModal.js";
+import { FichaClienteModal } from "../../components/FichaClienteModal.js";
+import { ExportarClientesModal } from "../../components/ExportarClientesModal.js";
 import { urlCadastroCliente } from "../../siteConfig.js";
 import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../planos.js";
 import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
@@ -219,6 +223,12 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const [clienteReenvio, setClienteReenvio] = useState<Customer | null>(null);
   /** Id do cliente cujo menu ⋮ (Editar / Reenviar) está aberto. */
   const [menuClienteAberto, setMenuClienteAberto] = useState<string | null>(null);
+  /** Cliente com a ficha (métricas + histórico) aberta. */
+  const [clienteFicha, setClienteFicha] = useState<Customer | null>(null);
+  /** Pop-up de exportação da planilha de clientes. */
+  const [exportacaoAberta, setExportacaoAberta] = useState(false);
+  // Estável: a ficha usa onFechar como dependência do efeito que a carrega.
+  const fecharFicha = React.useCallback(() => setClienteFicha(null), []);
   /**
    * Barra lateral do desktop. A preferência fica salva porque quem trabalha em
    * tela pequena costuma querê-la recolhida o tempo todo — reabrir a cada
@@ -1766,16 +1776,30 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   Atualização de selos realizada via leitura do QR Code individual do cliente.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  abrirLeitor();
-                }}
-                className="btn-boomii shrink-0 px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Scan className="w-4 h-4" />
-                <span>Escanear QR Code</span>
-              </button>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pode("exportarClientes")) setExportacaoAberta(true);
+                    else showToast("A planilha de clientes está disponível no plano Completo.");
+                  }}
+                  title="Baixar planilha com as métricas de cada cliente"
+                  className="btn-boomii-ghost px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {pode("exportarClientes") ? <Download className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  <span>Planilha</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    abrirLeitor();
+                  }}
+                  className="btn-boomii flex-1 sm:flex-initial px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Scan className="w-4 h-4" />
+                  <span>Escanear QR Code</span>
+                </button>
+              </div>
             </div>
 
             {customers.length === 0 ? (
@@ -1893,6 +1917,24 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                                     role="menu"
                                     className="absolute right-0 top-9 z-50 w-48 rounded-xl border border-border bg-popover p-1 shadow-2xl animate-fade-in"
                                   >
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuClienteAberto(null);
+                                        if (pode("fichaCliente")) setClienteFicha(c);
+                                        else showToast("A ficha do cliente está disponível a partir do plano Pro.");
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                                    >
+                                      {pode("fichaCliente") ? (
+                                        <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                                      ) : (
+                                        <Lock className="w-4 h-4 text-muted-foreground" />
+                                      )}
+                                      <span>Ver ficha</span>
+                                    </button>
                                     <button
                                       type="button"
                                       role="menuitem"
@@ -3293,6 +3335,33 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
           </div>
         </div>
+      )}
+
+      {/* Ficha do cliente (Pro+) */}
+      {clienteFicha && (
+        <FichaClienteModal
+          lojaId={currentSlug}
+          cliente={{
+            id: clienteFicha.id,
+            name: clienteFicha.name,
+            initials: clienteFicha.initials,
+            avatarBg: clienteFicha.avatarBg,
+          }}
+          onFechar={fecharFicha}
+        />
+      )}
+
+      {/* Planilha de clientes (Completo) */}
+      {exportacaoAberta && (
+        <ExportarClientesModal
+          lojaId={currentSlug}
+          totalClientes={customers.length}
+          onFechar={() => setExportacaoAberta(false)}
+          onConcluido={(total) => {
+            setExportacaoAberta(false);
+            showToast(`Planilha gerada com ${total} ${total === 1 ? "cliente" : "clientes"}.`);
+          }}
+        />
       )}
 
       {/* Pop-up de reenvio do cartão (cliente trocou de celular) */}
