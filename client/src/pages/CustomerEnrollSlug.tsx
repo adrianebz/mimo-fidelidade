@@ -157,8 +157,6 @@ export const CustomerEnrollSlug: React.FC<CustomerEnrollSlugProps> = ({ slugProp
         email,
         aniversario: aniversario || undefined,
         consentimento: true,
-        // Link de uma filial (?u=unidade): o cadastro fica registrado nela.
-        unidadeId: new URLSearchParams(window.location.search).get('u') || undefined,
       });
 
       confetti({

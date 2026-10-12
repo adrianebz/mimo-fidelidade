@@ -71,14 +71,22 @@ import { urlCadastroCliente } from "../../siteConfig.js";
 import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../planos.js";
 import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
 import { UnidadesPainel } from "../../components/UnidadesPainel.js";
-import { listarUnidades, ListaUnidades, listarItens, ListaItens } from "../../services/boomiiWalletService.js";
+import {
+  listarUnidades,
+  ListaUnidades,
+  listarItens,
+  ListaItens,
+  buscarClientesBalcao,
+  ClienteBalcao,
+} from "../../services/boomiiWalletService.js";
+import { BalcaoGerente } from "../../components/BalcaoGerente.js";
 import { ItensPainel } from "../../components/ItensPainel.js";
 import { MaisVendidosPainel } from "../../components/MaisVendidosPainel.js";
 import { CarrinhoItens, selosDoCarrinho } from "../../components/CarrinhoItens.js";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../firebase.js";
+import { db, auth } from "../../firebase.js";
 
-type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos" | "unidades";
+type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos" | "unidades" | "balcao";
 
 /**
  * Navegação do painel, declarada uma vez só.
@@ -105,10 +113,15 @@ const ITENS_NAV: Array<{
   { id: "itens", rotulo: "Itens Participantes", rotuloCurto: "Itens", Icone: ShoppingBag },
   { id: "produtos", rotulo: "Mais Vendidos", rotuloCurto: "Vendas", Icone: TrendingUp },
   { id: "unidades", rotulo: "Unidades", rotuloCurto: "Unidades", Icone: Building2 },
+  // Só do gerente de filial: o terminal de balcão da unidade.
+  { id: "balcao", rotulo: "Balcão", rotuloCurto: "Balcão", Icone: Scan, noRodape: true },
 ];
 
-/** Abas do gerente de filial: só a operação do balcão. */
-const ABAS_GERENTE: DashboardTab[] = ["visao-geral", "clientes", "aniversarios"];
+/**
+ * Gerente de filial: perfil próprio, só o terminal de balcão (ler QR, achar
+ * o cliente, dar/resgatar selos) — sem os dados da conta principal.
+ */
+const ABAS_GERENTE: DashboardTab[] = ["balcao"];
 
 interface Customer {
   id: string;
@@ -120,6 +133,8 @@ interface Customer {
   lastVisit: string;
   /** Data da última visita em ms (0 = nunca carimbou) — ordena "Clientes recentes". */
   ultimaVisitaMs?: number;
+  /** Filial onde foi dado o último selo (vazio = unidade principal). */
+  ultimaUnidade?: string;
   birthday: string;
   /** Aniversário como gravado ("AAAA-MM-DD", "MM-DD" ou vazio) — base da edição. */
   birthdayRaw?: string;
@@ -203,7 +218,9 @@ export const SitePainel: React.FC<{
   unidadeGerente?: string;
 }> = ({ onNavigate, onSair, papel, unidadeGerente }) => {
   const ehGerente = papel === "gerente";
-  const itensNav = ehGerente ? ITENS_NAV.filter((i) => ABAS_GERENTE.includes(i.id)) : ITENS_NAV;
+  const itensNav = ehGerente
+    ? ITENS_NAV.filter((i) => ABAS_GERENTE.includes(i.id))
+    : ITENS_NAV.filter((i) => i.id !== "balcao");
   const [currentTab, setCurrentTab] = useState<DashboardTab>("visao-geral");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedUnit, setSelectedUnit] = useState("Loja Principal");
@@ -342,6 +359,28 @@ export const SitePainel: React.FC<{
     );
   }, [currentSlug, aplicarDadosDaLoja]);
 
+  // ── Gerente de filial: terminal de balcão ──
+  // Abre direto no Balcão e busca clientes pelo servidor (dados mínimos).
+  useEffect(() => {
+    if (ehGerente && currentTab !== "balcao") setCurrentTab("balcao");
+  }, [ehGerente, currentTab]);
+
+  const [clientesBalcao, setClientesBalcao] = useState<Customer[]>([]);
+  const clienteBalcaoParaCustomer = (c: ClienteBalcao): Customer => ({
+    id: c.id,
+    name: c.nome,
+    email: "",
+    phone: c.celularMascarado,
+    stamps: c.selos,
+    totalStamps: c.meta,
+    lastVisit: "",
+    birthday: "",
+    avatarBg: "bg-secondary text-foreground",
+    initials: iniciais(c.nome),
+    qrToken: `BOOMII:${currentSlug}_${c.id}_1:123456`,
+    passCode: codigoDoPasse(currentSlug, c.id),
+  });
+
   // ── Itens Fixos (Completo) ──
   // Carrinho = itens marcados para a compra atual; vai junto com o carimbo e
   // o servidor calcula os selos a partir do cadastro.
@@ -419,6 +458,21 @@ export const SitePainel: React.FC<{
   const [manualCodeInput, setManualCodeInput] = useState("");
   /** Busca de cliente dentro do leitor (aba manual). */
   const [buscaLeitor, setBuscaLeitor] = useState("");
+  // Busca do leitor para o gerente: consulta o servidor ao parar de digitar.
+  useEffect(() => {
+    if (!ehGerente) return;
+    const t = buscaLeitor.trim();
+    if (t.length < 2) {
+      setClientesBalcao([]);
+      return;
+    }
+    const id = setTimeout(async () => {
+      const res = await buscarClientesBalcao(currentSlug, t);
+      if (res.sucesso) setClientesBalcao(res.clientes.map(clienteBalcaoParaCustomer));
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaLeitor, ehGerente, currentSlug]);
   const [isProcessingStamp, setIsProcessingStamp] = useState(false);
   const [lastStampResult, setLastStampResult] = useState<{
     cartaoId: string;
@@ -614,6 +668,7 @@ export const SitePainel: React.FC<{
           totalStamps: rc.meta || 10,
           lastVisit: formatarUltimaVisita(rc.lastVisit),
           ultimaVisitaMs: Date.parse(rc.lastVisit || '') || 0,
+          ultimaUnidade: rc.ultimaUnidadeId && rc.ultimaUnidadeId !== 'principal' ? rc.ultimaUnidadeNome : undefined,
           birthday: aniversarioParaExibir(rc.aniversario, rc.aniversarioMMDD),
           birthdayRaw: rc.aniversario || rc.aniversarioMMDD || '',
           passCode: codigoDoPasse(slug, rc.id || rc.clienteId),
@@ -778,6 +833,8 @@ export const SitePainel: React.FC<{
         setCarrinho({});
         recarregarItens();
       }
+      // Gerente: atualiza o contador "selos no mês" da unidade dele.
+      if (ehGerente) recarregarUnidades();
       setLastStampResult(result);
       playSuccessSound(result.completo);
       navigator.vibrate?.(200);
@@ -791,6 +848,7 @@ export const SitePainel: React.FC<{
               stamps: result.selos,
               lastVisit: "Agora mesmo",
               ultimaVisitaMs: Date.now(),
+              ultimaUnidade: unidadeAtendimento !== "principal" ? nomeUnidadeAtual : undefined,
             };
           }
           return c;
@@ -814,7 +872,11 @@ export const SitePainel: React.FC<{
       } else if (creditados > 1) {
         showToast(`✅ ${creditados} selos registrados — ${result.selos}/${result.meta}${sufixoExcedente}`);
       } else {
-        showToast(`✅ Selo ${result.selos}/${result.meta} registrado com sucesso!`);
+        showToast(
+          `✅ Selo ${result.selos}/${result.meta} registrado` +
+            (unidadeAtendimento !== "principal" && nomeUnidadeAtual ? ` em ${nomeUnidadeAtual}` : "") +
+            "!"
+        );
       }
     } catch (err: any) {
       showToast(err.message || "Erro ao registrar selo.");
@@ -1169,7 +1231,8 @@ export const SitePainel: React.FC<{
         </nav>
 
         <div className={`py-4 border-t border-border/40 space-y-2 ${rotulos ? "px-4" : "px-3"}`}>
-          {financialStatus === "adimplente" ? (
+          {/* Plano e situação financeira são da conta principal: fora do perfil do gerente. */}
+          {ehGerente ? null : financialStatus === "adimplente" ? (
             <div
               className={`flex items-center py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-semibold text-emerald-400 ${
                 rotulos ? "gap-1.5 px-3" : "justify-center px-0"
@@ -1273,8 +1336,8 @@ export const SitePainel: React.FC<{
           <div className="flex items-center gap-2 sm:gap-3">
             <ToggleTema />
 
-            {/* Notification Bell */}
-            <div className="relative">
+            {/* Notification Bell (avisos da base toda: não é do gerente de filial) */}
+            <div className={ehGerente ? "hidden" : "relative"}>
               <button
                 type="button"
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
@@ -1425,7 +1488,7 @@ export const SitePainel: React.FC<{
                 <button
                   type="button"
                   onClick={() => {
-                    const url = urlCadastroCliente(currentSlug, unidadeAtendimento);
+                    const url = urlCadastroCliente(currentSlug);
                     navigator.clipboard.writeText(url);
                     showToast("Link de cadastro copiado para o clipboard!");
                   }}
@@ -1435,7 +1498,7 @@ export const SitePainel: React.FC<{
                   <span>Copiar Link</span>
                 </button>
                 <a
-                  href={urlCadastroCliente(currentSlug, unidadeAtendimento)}
+                  href={urlCadastroCliente(currentSlug)}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-boomii px-4 py-2 text-xs font-bold flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-md cursor-pointer"
@@ -1575,7 +1638,7 @@ export const SitePainel: React.FC<{
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(urlCadastroCliente(currentSlug, unidadeAtendimento));
+                          navigator.clipboard.writeText(urlCadastroCliente(currentSlug));
                           showToast("Link de cadastro copiado!");
                         }}
                         className="btn-boomii-ghost text-xs py-1.5 px-3.5"
@@ -1807,7 +1870,7 @@ export const SitePainel: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      const url = urlCadastroCliente(currentSlug, unidadeAtendimento);
+                      const url = urlCadastroCliente(currentSlug);
                       navigator.clipboard.writeText(url);
                       showToast("Link de cadastro copiado!");
                     }}
@@ -1974,7 +2037,7 @@ export const SitePainel: React.FC<{
                               />
                             </div>
                             <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                              <span className="truncate">Última: {c.lastVisit}</span>
+                              <span className="truncate">Última: {c.lastVisit}{c.ultimaUnidade ? ` · ${c.ultimaUnidade}` : ""}</span>
                               <span className="shrink-0">Aniversário: {c.birthday}</span>
                             </div>
                           </div>
@@ -2693,6 +2756,20 @@ export const SitePainel: React.FC<{
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
+            ABA: BALCÃO (só o gerente de filial)
+           ═══════════════════════════════════════════════════════════════ */}
+        {currentTab === "balcao" && ehGerente && (
+          <BalcaoGerente
+            lojaId={currentSlug}
+            unidadeNome={nomeUnidadeAtual || ""}
+            gerenteEmail={auth.currentUser?.email}
+            carimbosMes={listaUnidades?.unidades.find((u) => u.id === unidadeAtendimento)?.carimbosMes ?? null}
+            onAtender={(c) => abrirLeitor(c ? clienteBalcaoParaCustomer(c) : undefined)}
+            onResgatar={(id) => handleRedeemReward(id)}
+          />
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
             ABA: UNIDADES (filiais — plano Completo)
            ═══════════════════════════════════════════════════════════════ */}
         {currentTab === "unidades" && !ehGerente && (
@@ -2948,7 +3025,10 @@ export const SitePainel: React.FC<{
                 const termo = buscaLeitor.trim().toLowerCase();
                 const digitos = termo.replace(/\D/g, "");
                 const pareceCodigo = /^(boomii|mimo):/i.test(buscaLeitor.trim());
-                const sugestoes = termo && !pareceCodigo
+                // Gerente: a busca já vem filtrada do servidor (dados mínimos).
+                const sugestoes = ehGerente
+                  ? (termo && !pareceCodigo ? clientesBalcao.slice(0, 6) : [])
+                  : termo && !pareceCodigo
                   ? customers
                       .filter(
                         (c) =>

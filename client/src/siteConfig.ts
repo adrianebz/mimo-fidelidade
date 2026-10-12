@@ -23,12 +23,11 @@ export function origemPublica(): string {
 }
 
 /**
- * Link público de cadastro do cliente de uma loja. Com `unidadeId` (filiais),
- * o cadastro fica registrado naquela unidade — o cartão vale na rede toda.
+ * Link público de cadastro do cliente. É um só para a rede toda: o cliente é
+ * da marca, e o cartão vale em qualquer unidade.
  */
-export function urlCadastroCliente(slug: string, unidadeId?: string | null): string {
-  const unidade = unidadeId && unidadeId !== 'principal' ? `?u=${encodeURIComponent(unidadeId)}` : '';
-  return `${origemPublica()}/c/${slug}${unidade}`;
+export function urlCadastroCliente(slug: string): string {
+  return `${origemPublica()}/c/${slug}`;
 }
 
 /** Link que o cliente abre para adicionar de novo o cartão (troca de aparelho). */

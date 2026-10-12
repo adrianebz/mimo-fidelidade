@@ -181,6 +181,7 @@ export const FichaClienteModal: React.FC<Props> = ({ lojaId, cliente, onFechar }
                           <p className="text-sm text-foreground">{texto}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {data(e.em, true)}
+                            {e.unidade && ` · em ${e.unidade}`}
                             {e.operador && ` · por ${e.operador}`}
                           </p>
                         </li>

@@ -514,7 +514,7 @@ exports.provisionarLojista = onCall(
 exports.criarCartao = onCall(
   { secrets: ['WALLET_SA_KEY'], region: 'southamerica-east1' },
   async (req) => {
-    const { lojaId, nome, celular, email, aniversario, consentimento, unidadeId } = req.data || {};
+    const { lojaId, nome, celular, email, aniversario, consentimento } = req.data || {};
 
     if (!consentimento) {
       throw new HttpsError('failed-precondition', 'Consentimento LGPD obrigatório.');
@@ -590,13 +590,9 @@ exports.criarCartao = onCall(
         );
       }
     } else {
-      // Unidade do link de cadastro (?u=). Inválida ou inativa: principal.
-      const unidadeCadastro = await unidades.resolverAtendimento(db, lojaId, loja, null, unidadeId);
-      clientePayload.unidadeCadastro = unidadeCadastro;
-      const lote = db.batch();
-      lote.set(clienteRef, clientePayload);
-      unidades.contarCliente(lote, db, lojaId, unidadeCadastro.id);
-      await lote.commit();
+      // O cadastro é da REDE (um link só): o cliente é da marca, não de uma
+      // unidade. O que é por unidade é onde cada selo foi dado (carimbar).
+      await clienteRef.set(clientePayload);
     }
     const dadosCliente = clienteSnap.exists ? clienteSnap.data() : clientePayload;
 
@@ -645,8 +641,8 @@ exports.criarCartao = onCall(
       clienteAniversario: dadosCliente.aniversario || null,
       clienteCelular: tel.number,
       // Onde o cliente se cadastrou (aparece no campo "Unidade" do passe).
-      unidadeId: dadosCliente.unidadeCadastro?.id || unidades.PRINCIPAL,
-      unidade: dadosCliente.unidadeCadastro?.nome || loja.nome || '',
+      // Cartão da rede: o campo "Unidade" do passe mostra a marca.
+      unidade: loja.nome || '',
       ciclo,
       selos: 0,
       meta,
@@ -877,6 +873,10 @@ exports.carimbar = onCall(
             stamps: novosSelos,
             status: novoStatus,
             lastVisit: new Date().toISOString(),
+            // Onde o selo foi dado: é o que mostra na lista quando a compra
+            // aconteceu numa unidade diferente da principal.
+            ultimaUnidadeId: unidade.id,
+            ultimaUnidadeNome: unidade.nome,
           },
           { merge: true }
         );
@@ -1534,7 +1534,7 @@ exports.excluirCliente = onCall(
 exports.fichaCliente = onCall({ region: 'southamerica-east1' }, async (req) => {
   const claims = req.auth?.token || {};
   const { lojaId: lojaIdParam, clienteId } = req.data || {};
-  const lojaId = lojaDoPedido(claims, lojaIdParam, 'ver', true);
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'ver');
   if (!lojaId || !clienteId) throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
 
   const db = admin.firestore();
@@ -1664,10 +1664,60 @@ exports.listarUnidades = onCall({ region: 'southamerica-east1' }, async (req) =>
       status: u.status || 'ativa',
       motivoInativa: u.motivoInativa || null,
       gerenteEmail: u.gerenteEmail || null,
-      clientes: Number(u.contagem?.clientes) || 0,
+      // Cadastro é da rede; por unidade só faz sentido o movimento (selos dados ali).
       carimbosMes: Number(u.contagem?.carimbos?.[mes]) || 0,
+      carimbosMesAnterior: Number(u.contagem?.carimbos?.[mesAnterior(mes)]) || 0,
     })),
   };
+});
+
+/** "2026-10" → "2026-09"; "2026-01" → "2025-12". */
+function mesAnterior(mes) {
+  const [a, m] = mes.split('-').map(Number);
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+}
+
+/**
+ * Busca de cliente para o gerente de filial ("terminal de balcão").
+ *
+ * O gerente não lê a base de clientes da loja (as regras do banco não deixam):
+ * ele só precisa achar o cliente para dar ou resgatar selos. Por isso esta
+ * busca devolve o mínimo — primeiro nome com a inicial do sobrenome, celular
+ * mascarado e os selos —, nunca e-mail, aniversário ou celular completo.
+ */
+exports.buscarClientesBalcao = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'atender clientes de', true);
+  if (!lojaId) throw new HttpsError('invalid-argument', 'Loja não identificada.');
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  unidades.exigirGerenteNoPlano(claims, loja);
+
+  const termo = String(req.data?.termo || '').trim().toLowerCase();
+  const digitos = termo.replace(/\D/g, '');
+  if (termo.length < 2 && digitos.length < 3) return { clientes: [] };
+
+  const snap = await db.collection(`lojistas/${lojaId}/clientes`).get();
+  const achados = snap.docs
+    .filter((d) => {
+      const nome = String(d.get('nome') || '').toLowerCase();
+      const cel = String(d.get('celular') || '').replace(/\D/g, '');
+      return (termo.length >= 2 && nome.includes(termo)) || (digitos.length >= 3 && cel.includes(digitos));
+    })
+    .slice(0, 8)
+    .map((d) => {
+      const partes = String(d.get('nome') || 'Cliente').trim().split(/\s+/);
+      const nome = partes.length > 1 ? `${partes[0]} ${partes[partes.length - 1][0]}.` : partes[0];
+      const cel = String(d.get('celular') || '').replace(/\D/g, '');
+      return {
+        id: d.id,
+        nome,
+        celularMascarado: cel.length >= 4 ? `(••) •••••-${cel.slice(-4)}` : '',
+        selos: Number(d.get('stamps') ?? d.get('selos')) || 0,
+        meta: Number(d.get('meta')) || Number(loja.design?.stamps?.total) || Number(loja.regras?.meta) || 10,
+      };
+    });
+  return { clientes: achados };
 });
 
 exports.salvarUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
@@ -1981,7 +2031,7 @@ const REENVIO_DIAS = 7;
 exports.gerarLinkReenvio = onCall({ region: 'southamerica-east1' }, async (req) => {
   const claims = req.auth?.token || {};
   const { lojaId: lojaIdParam, clienteId } = req.data || {};
-  const lojaId = lojaDoPedido(claims, lojaIdParam, 'reenviar o cartão de', true);
+  const lojaId = lojaDoPedido(claims, lojaIdParam, 'reenviar o cartão de');
   if (!lojaId || !clienteId) {
     throw new HttpsError('invalid-argument', 'Loja e cliente são obrigatórios.');
   }

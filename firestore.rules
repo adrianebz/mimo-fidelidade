@@ -58,8 +58,9 @@ service cloud.firestore {
       // pessoal sob LGPD): só o lojista dono ou o admin podem ler. Escrita
       // só pelas Cloud Functions (nunca direto do navegador).
       match /clientes/{clienteId} {
-        // O cartão vale na rede toda: o gerente atende clientes de qualquer unidade.
-        allow read: if isAdmin() || isLojista(lojaId) || isGerente(lojaId);
+        // Gerente de filial NÃO lê a base: busca pela função buscarClientesBalcao,
+        // que devolve só primeiro nome, celular mascarado e selos.
+        allow read: if isAdmin() || isLojista(lojaId);
         allow write: if false;
       }
 
@@ -86,8 +87,7 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (request.auth != null
             && request.auth.token.role == 'lojista'
-            && request.auth.token.lojaId == resource.data.lojaId)
-        || isGerente(resource.data.lojaId);
+            && request.auth.token.lojaId == resource.data.lojaId);
       allow write: if false;
 
       match /eventos/{eventoId} {

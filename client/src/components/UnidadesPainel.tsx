@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import QRCode from 'qrcode';
 import {
   Building2,
   Plus,
@@ -9,7 +8,6 @@ import {
   UserPlus,
   UserMinus,
   Copy,
-  QrCode as IconeQr,
   X,
   RefreshCw,
   AlertCircle,
@@ -26,7 +24,6 @@ import {
   removerGerente,
   aprovarUnidade,
 } from '../services/boomiiWalletService.js';
-import { urlCadastroCliente } from '../siteConfig.js';
 import { PRECO_UNIDADE_EXTRA } from '../planos.js';
 
 interface Props {
@@ -92,7 +89,6 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
   const [menuAberto, setMenuAberto] = useState<string | null>(null);
   const [formulario, setFormulario] = useState<{ unidade?: Unidade } | null>(null);
   const [convite, setConvite] = useState<Unidade | null>(null);
-  const [qr, setQr] = useState<{ unidade: Unidade; url: string; imagem: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
   const unidades = lista?.unidades || [];
@@ -128,12 +124,6 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
     onMudou();
   };
 
-  const abrirQr = async (u: Unidade) => {
-    setMenuAberto(null);
-    const url = urlCadastroCliente(lojaId, u.id);
-    const imagem = await QRCode.toDataURL(url, { margin: 1, width: 400 });
-    setQr({ unidade: u, url, imagem });
-  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -209,7 +199,6 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
                               oculto: !modoAdmin || u.status !== 'aguardando',
                             },
                             { Icone: Edit3, texto: 'Editar dados', acao: () => { setMenuAberto(null); setFormulario({ unidade: u }); } },
-                            { Icone: IconeQr, texto: 'Link e QR de cadastro', acao: () => abrirQr(u), oculto: u.status !== 'ativa' },
                             u.gerenteEmail
                               ? { Icone: UserMinus, texto: 'Remover gerente', acao: () => tirarGerente(u) }
                               : { Icone: UserPlus, texto: 'Convidar gerente', acao: () => { setMenuAberto(null); setConvite(u); }, oculto: u.status !== 'ativa' },
@@ -241,12 +230,12 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-xl bg-background/50 border border-border/50 px-3 py-2">
-                    <span className="text-muted-foreground block">Clientes cadastrados</span>
-                    <strong className="text-foreground text-base tabular-nums">{u.clientes}</strong>
+                    <span className="text-muted-foreground block">Selos dados no mês</span>
+                    <strong className="text-foreground text-base tabular-nums">{u.carimbosMes}</strong>
                   </div>
                   <div className="rounded-xl bg-background/50 border border-border/50 px-3 py-2">
-                    <span className="text-muted-foreground block">Carimbos no mês</span>
-                    <strong className="text-foreground text-base tabular-nums">{u.carimbosMes}</strong>
+                    <span className="text-muted-foreground block">Mês anterior</span>
+                    <strong className="text-foreground text-base tabular-nums">{u.carimbosMesAnterior}</strong>
                   </div>
                 </div>
 
@@ -292,28 +281,6 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
         />
       )}
 
-      {qr && (
-        <Janela titulo={`Cadastro em ${qr.unidade.nome}`} onFechar={() => setQr(null)}>
-          <div className="flex flex-col items-center gap-2">
-            <img src={qr.imagem} alt={`QR de cadastro da unidade ${qr.unidade.nome}`} className="w-52 h-52 rounded-2xl bg-white p-2" />
-            <p className="text-[11px] text-muted-foreground text-center">
-              Imprima e deixe no balcão desta unidade. Quem se cadastrar por aqui fica registrado em {qr.unidade.nome}.
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-background/50 px-3 py-2 text-xs font-mono text-foreground break-all">{qr.url}</div>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard?.writeText(qr.url);
-              onToast('Link copiado.');
-            }}
-            className="w-full rounded-xl border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Copy className="w-4 h-4" />
-            Copiar link
-          </button>
-        </Janela>
-      )}
     </div>
   );
 };
@@ -406,8 +373,9 @@ const ConviteGerente: React.FC<{ lojaId: string; unidade: Unidade; onFechar: () 
       {link === undefined ? (
         <form onSubmit={enviar} className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            O gerente entra no mesmo app, mas só atende e vê esta unidade: clientes, carimbos e resgates. Ele não acessa
-            visual do cartão, regras, unidades nem a planilha.
+            O gerente entra no mesmo app com o perfil desta unidade: lê o QR, busca o cliente e dá ou resgata selos.
+            Ele não vê os dados da conta principal — indicadores, lista de clientes com contatos, configurações nem a
+            planilha.
           </p>
           <Erro texto={erro} />
           <label className="block">

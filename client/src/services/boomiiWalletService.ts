@@ -33,8 +33,6 @@ export interface CustomerEnrollInput {
   email: string;
   aniversario?: string;
   consentimento: boolean;
-  /** Unidade do link de cadastro (?u=), para filiais. */
-  unidadeId?: string;
 }
 
 export interface EnrolledCardResult {
@@ -435,7 +433,7 @@ export async function cadastrarClienteECartao(input: CustomerEnrollInput): Promi
   const loja = await obterDadosLojista(input.lojaId);
 
   const criarCartaoFn = httpsCallable<
-    { lojaId: string; nome: string; celular: string; email: string; aniversario?: string; consentimento: boolean; unidadeId?: string },
+    { lojaId: string; nome: string; celular: string; email: string; aniversario?: string; consentimento: boolean },
     { cartaoId: string; jaExistia: boolean; selos: number; meta: number; status: string; saveUrl: string; applePassUrl?: string; totpSecret?: string }
   >(functions, 'criarCartao');
 
@@ -446,7 +444,6 @@ export async function cadastrarClienteECartao(input: CustomerEnrollInput): Promi
     email: input.email,
     aniversario: input.aniversario,
     consentimento: input.consentimento,
-    ...(input.unidadeId ? { unidadeId: input.unidadeId } : {}),
   });
 
   return {
@@ -913,8 +910,8 @@ export interface Unidade {
   status: 'ativa' | 'inativa' | 'aguardando';
   motivoInativa: 'plano' | 'manual' | null;
   gerenteEmail: string | null;
-  clientes: number;
   carimbosMes: number;
+  carimbosMesAnterior: number;
 }
 
 export interface ListaUnidades {
@@ -941,6 +938,24 @@ async function chamar<E, S>(nome: string, entrada: E, padrao: string): Promise<R
     return { sucesso: false, erro: mensagemDoServidor(err, padrao) };
   }
 }
+
+/** Resultado da busca do gerente de filial: só o necessário para dar/resgatar selos. */
+export interface ClienteBalcao {
+  id: string;
+  /** Primeiro nome + inicial do sobrenome ("Ana S."). */
+  nome: string;
+  /** "(••) •••••-7777" */
+  celularMascarado: string;
+  selos: number;
+  meta: number;
+}
+
+export const buscarClientesBalcao = (lojaId: string, termo: string) =>
+  chamar<{ lojaId: string; termo: string }, { clientes: ClienteBalcao[] }>(
+    'buscarClientesBalcao',
+    { lojaId, termo },
+    'Não foi possível buscar agora.'
+  );
 
 export const listarUnidades = (lojaId: string) =>
   chamar<{ lojaId: string }, ListaUnidades>('listarUnidades', { lojaId }, 'Não foi possível carregar as unidades.');
