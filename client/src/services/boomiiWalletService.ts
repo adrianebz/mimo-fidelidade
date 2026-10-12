@@ -974,6 +974,14 @@ export const alterarStatusUnidade = (lojaId: string, unidadeId: string, ativa: b
     'Não foi possível alterar a unidade.'
   );
 
+/** Exclui uma filial (a principal não). O histórico de selos dados nela fica. */
+export const excluirUnidade = (lojaId: string, unidadeId: string) =>
+  chamar<{ lojaId: string; unidadeId: string }, {}>(
+    'excluirUnidade',
+    { lojaId, unidadeId },
+    'Não foi possível excluir a unidade.'
+  );
+
 /** Só admin: libera uma unidade criada além do contratado (cobra a extra). */
 export const aprovarUnidade = (lojaId: string, unidadeId: string) =>
   chamar<{ lojaId: string; unidadeId: string }, { unidadesContratadas: number }>(

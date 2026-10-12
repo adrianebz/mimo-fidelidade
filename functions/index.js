@@ -1808,6 +1808,50 @@ exports.alterarStatusUnidade = onCall({ region: 'southamerica-east1' }, async (r
   return { sucesso: true };
 });
 
+/**
+ * Exclui uma unidade (filial). A principal não sai.
+ *
+ * O histórico não se perde: cada selo guarda o NOME da unidade onde foi dado,
+ * então a ficha e a lista do cliente continuam mostrando "em Cidade Nova". O
+ * gerente da unidade perde o acesso na hora. O contrato (unidades contratadas)
+ * não muda sozinho — reduzir a cobrança é decisão do admin.
+ */
+exports.excluirUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
+  const claims = req.auth?.token || {};
+  const lojaId = lojaDoPedido(claims, req.data?.lojaId, 'excluir as unidades de');
+  const unidadeId = String(req.data?.unidadeId || '');
+  if (!lojaId || !unidadeId) throw new HttpsError('invalid-argument', 'Loja e unidade são obrigatórias.');
+  if (unidadeId === unidades.PRINCIPAL) {
+    throw new HttpsError('failed-precondition', 'A unidade principal não pode ser excluída.');
+  }
+  const db = admin.firestore();
+  const loja = await carregarLoja(db, lojaId);
+  if (claims.role !== 'admin') planos.exigirRecurso(loja, 'filiais', 'O cadastro de filiais');
+
+  const r = unidades.ref(db, lojaId, unidadeId);
+  const snap = await r.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Unidade não encontrada.');
+
+  const gerenteUid = snap.get('gerenteUid');
+  if (gerenteUid) {
+    await admin.auth().setCustomUserClaims(gerenteUid, null).catch(() => {});
+    await admin.auth().revokeRefreshTokens(gerenteUid).catch(() => {});
+  }
+  await r.delete();
+  await unidades.atualizarResumo(db, lojaId);
+  await db.collection('auditoria').add({
+    tipo: 'unidade_excluida',
+    lojaId,
+    unidadeId,
+    unidadeNome: snap.get('nome') || '',
+    tinhaGerente: !!gerenteUid,
+    por: req.auth.uid,
+    papel: claims.role,
+    em: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { sucesso: true };
+});
+
 /** Admin libera uma unidade que o lojista criou além do contratado. */
 exports.aprovarUnidade = onCall({ region: 'southamerica-east1' }, async (req) => {
   if (req.auth?.token?.role !== 'admin') {

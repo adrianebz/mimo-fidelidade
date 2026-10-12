@@ -5,6 +5,7 @@ import {
   MoreVertical,
   Edit3,
   Power,
+  Trash2,
   UserPlus,
   UserMinus,
   Copy,
@@ -23,6 +24,7 @@ import {
   convidarGerente,
   removerGerente,
   aprovarUnidade,
+  excluirUnidade,
 } from '../services/boomiiWalletService.js';
 import { PRECO_UNIDADE_EXTRA } from '../planos.js';
 
@@ -116,6 +118,22 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
     setOcupado(false);
     if (!res.sucesso) return onToast(res.erro);
     onToast(`${u.nome} liberada. Unidades contratadas: ${res.unidadesContratadas}.`);
+    onMudou();
+  };
+
+  const apagar = async (u: Unidade) => {
+    setMenuAberto(null);
+    const aviso =
+      `Excluir a unidade ${u.nome}?\n\n` +
+      '• Os selos já dados nela continuam no histórico dos clientes.\n' +
+      (u.gerenteEmail ? `• O gerente ${u.gerenteEmail} perde o acesso na hora.\n` : '') +
+      '• Esta ação não pode ser desfeita.';
+    if (!window.confirm(aviso)) return;
+    setOcupado(true);
+    const res = await excluirUnidade(lojaId, u.id);
+    setOcupado(false);
+    if (!res.sucesso) return onToast(res.erro);
+    onToast(`Unidade ${u.nome} excluída.`);
     onMudou();
   };
 
@@ -223,6 +241,7 @@ export const UnidadesPainel: React.FC<Props> = ({ lojaId, lista, carregando, onM
                               // Reativar com o limite cheio não é possível para o lojista.
                               oculto: u.principal || u.status === 'aguardando' || (u.status !== 'ativa' && limiteAtingido),
                             },
+                            { Icone: Trash2, texto: 'Excluir unidade', acao: () => apagar(u), oculto: u.principal },
                           ]
                             .filter((i) => !i.oculto)
                             .map(({ Icone, texto, acao }) => (
