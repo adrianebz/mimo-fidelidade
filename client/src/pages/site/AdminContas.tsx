@@ -15,6 +15,7 @@ import {
 } from '../../services/boomiiWalletService.js';
 import { SiteNavTab } from '../../components/SiteHeader.js';
 import { urlCadastroCliente } from '../../siteConfig.js';
+import { NOME_PLANO, ORDEM_PLANOS, PRECO_PLANO, normalizarPlano } from '../../planos.js';
 
 interface AdminContasProps {
   onNavigate: (tab: SiteNavTab) => void;
@@ -99,7 +100,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
       nome: lojista.nome || '',
       email: lojista.email || '',
       senha: lojista.senha || '',
-      plano: lojista.financeiro?.plano || 'pro',
+      plano: normalizarPlano(lojista.financeiro?.plano),
       statusFinanceiro: lojista.statusFinanceiro || 'adimplente',
       premio: lojista.layout?.premio || 'Recompensa Exclusiva (10º Selo)',
       corFundo: lojista.layout?.corFundo || '#121215',
@@ -123,6 +124,14 @@ export const AdminContas: React.FC<AdminContasProps> = ({
       // A senha NÃO é gravada no Firestore: o acesso vive no Firebase Auth
       // (ver provisionarAcessoLojista logo abaixo). O documento do lojista tem
       // leitura pública — guardar senha aqui a expunha para qualquer visitante.
+      const plano = normalizarPlano(formData.plano);
+      const anterior = lojistas.find((l) => l.id === docId);
+      const planoAnterior = anterior ? normalizarPlano(anterior.financeiro?.plano) : null;
+      // Rebaixou para o Essencial: o visual premium continua por 30 dias, para
+      // os clientes da loja não verem o cartão mudar de repente.
+      const rebaixouVisual =
+        plano === 'essencial' && planoAnterior !== null && planoAnterior !== 'essencial';
+
       await salvarLojistaFirestore(docId, {
         nome: formData.nome.trim(),
         email: formData.email.toLowerCase().trim(),
@@ -130,27 +139,35 @@ export const AdminContas: React.FC<AdminContasProps> = ({
         statusFinanceiro: formData.statusFinanceiro,
         financeiro: {
           status: formData.statusFinanceiro,
-          plano: formData.plano,
-          valorMensal: formData.plano === 'rede' ? 299 : formData.plano === 'pro' ? 149 : 79,
+          plano,
+          valorMensal: PRECO_PLANO[plano],
           bloqueadoPorInadimplencia: formData.statusFinanceiro === 'inadimplente',
-        },
-        layout: {
-          corFundo: formData.corFundo || '#121215',
-          corTexto: '#FFFFFF',
-          heroUrl: 'https://boomii-fidelidade.web.app/boomii-hero.jpg',
-          logoUrl: 'https://boomii-fidelidade.web.app/boomii-logo.jpg',
-          nomePrograma: 'Programa de Fidelidade Digital',
-          premio: formData.premio || 'Recompensa Exclusiva (10º Selo)',
-          validadeDias: 30,
-        },
-        regras: {
-          meta: 10,
-          intervaloMinimoMin: 30,
-          maxSelosDiaPorCliente: 2,
-          validadeDias: 180,
-          exigirSMS: false,
-        },
-      });
+          ...(rebaixouVisual ? { carenciaVisualAte: Date.now() + 30 * 24 * 60 * 60 * 1000 } : {}),
+        } as any,
+        // Visual e regras de fábrica só na CRIAÇÃO. Antes eram regravados a
+        // cada edição: trocar o plano de uma loja apagava a logo, o prêmio e a
+        // meta que o lojista tinha configurado.
+        ...(modalMode === 'create'
+          ? {
+              layout: {
+                corFundo: formData.corFundo || '#121215',
+                corTexto: '#FFFFFF',
+                heroUrl: 'https://boomii-fidelidade.web.app/boomii-hero.jpg',
+                logoUrl: 'https://boomii-fidelidade.web.app/boomii-logo.jpg',
+                nomePrograma: 'Programa de Fidelidade Digital',
+                premio: formData.premio || 'Recompensa Exclusiva (10º Selo)',
+                validadeDias: 30,
+              },
+              regras: {
+                meta: 10,
+                intervaloMinimoMin: 30,
+                maxSelosDiaPorCliente: 2,
+                validadeDias: 180,
+                exigirSMS: false,
+              },
+            }
+          : {}),
+      } as any);
 
       // Cria/atualiza a conta de acesso no Firebase Auth com as claims da loja.
       // Ao editar sem informar senha, a senha atual é preservada.
@@ -550,7 +567,7 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                         {/* Plano */}
                         <td className="py-4 px-4">
                           <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-secondary text-foreground border border-border/50">
-                            {lojista.financeiro?.plano || 'Pro'}
+                            {NOME_PLANO[normalizarPlano(lojista.financeiro?.plano)]}
                           </span>
                         </td>
 
@@ -698,9 +715,11 @@ export const AdminContas: React.FC<AdminContasProps> = ({
                     onChange={(e) => setFormData({ ...formData, plano: e.target.value })}
                     className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm text-foreground outline-none focus:border-primary cursor-pointer"
                   >
-                    <option value="starter">Starter (R$ 79/mês)</option>
-                    <option value="pro">Pro (R$ 149/mês)</option>
-                    <option value="rede">Rede / Franquia (R$ 299/mês)</option>
+                    {ORDEM_PLANOS.map((p) => (
+                      <option key={p} value={p}>
+                        {NOME_PLANO[p]} (R$ {PRECO_PLANO[p]}/mês)
+                      </option>
+                    ))}
                   </select>
                 </div>
 

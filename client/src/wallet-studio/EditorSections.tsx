@@ -4,6 +4,7 @@ import type { CardDesign, InfoFieldsConfig, StampIconKey } from './types.js';
 import { PALETTES, STAMP_ICON_CATALOG, STAMP_TOTAL_OPTIONS } from './defaults.js';
 import { Section, Field, TextInput, ColorInput, Toggle, Segmented, ImageUpload } from './ui.js';
 import { StampGlyph } from './StampGlyph.js';
+import { RecursoBloqueado } from '../components/RecursoBloqueado.js';
 
 type Patch = (patch: Partial<CardDesign>) => void;
 
@@ -11,6 +12,12 @@ interface SectionProps {
   design: CardDesign;
   patch: Patch;
   onError?: (msg: string) => void;
+  /**
+   * Plano Essencial ("modelo Boomii"): só o essencial do negócio é editável
+   * (quantidade de selos, texto do prêmio). O servidor aplica o mesmo recorte
+   * ao gerar o cartão — esconder aqui é só para não oferecer o que não vale.
+   */
+  basico?: boolean;
 }
 
 /** Seletor de ícone reutilizado pelo selo e pela recompensa. */
@@ -132,7 +139,7 @@ export const ColorsSection: React.FC<SectionProps> = ({ design, patch }) => (
 );
 
 // ── 3. Selos ────────────────────────────────────────────────────────────────
-export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }) => (
+export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError, basico }) => (
   <Section step={3} title="Selos da Cartela" icon={<Grid3x3 className="h-4 w-4" />} badge="Mecânica">
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Quantidade total de selos" hint="É a meta do programa: ao completar, o cliente resgata a recompensa.">
@@ -146,6 +153,7 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
           options={STAMP_TOTAL_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
         />
       </Field>
+      {!basico && (
 
       <Field label="Formato do selo">
         <Segmented
@@ -158,8 +166,17 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
           ]}
         />
       </Field>
+      )}
     </div>
 
+    {basico ? (
+      <RecursoBloqueado
+        recurso="estudioCompleto"
+        titulo="Selos com a cara da sua marca"
+        descricao="Formato do selo, ícones, imagem própria no selo e no prêmio, vários selos por compra e os campos do cartão. No seu plano, o cartão usa o modelo Boomii, com selos numerados."
+      />
+    ) : (
+    <>
     <Field label="O que aparece no selo conquistado">
       <Segmented
         value={design.stamps.fill}
@@ -258,11 +275,13 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError }
         description="Desligue para fixar sempre o padrão acima"
       />
     </div>
+    </>
+    )}
   </Section>
 );
 
 // ── 4. Recompensa ───────────────────────────────────────────────────────────
-export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }) => (
+export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError, basico }) => (
   <Section step={4} title="Recompensa (último selo)" icon={<Gift className="h-4 w-4" />} badge="Boomii">
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Título da recompensa">
@@ -292,6 +311,8 @@ export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }
       />
     </Field>
 
+    {!basico && (
+    <>
     <div className="grid gap-4 sm:grid-cols-2">
       <ColorInput
         label="Cor do selo do prêmio"
@@ -316,6 +337,8 @@ export const RewardSection: React.FC<SectionProps> = ({ design, patch, onError }
         accent={design.reward.color}
       />
     </Field>
+    </>
+    )}
   </Section>
 );
 

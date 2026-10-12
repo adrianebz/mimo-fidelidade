@@ -1,47 +1,61 @@
 import React from 'react';
 import { SiteNavTab } from '../../components/SiteHeader.js';
+import { PRECO_PLANO, PRECO_UNIDADE_EXTRA } from '../../planos.js';
 
 interface SitePrecosProps {
   onNavigate: (tab: SiteNavTab) => void;
 }
 
-const planos = [
+type Item = { texto: string; emBreve?: boolean };
+
+// Só o que existe de verdade; o que ainda está sendo construído vem marcado
+// "em breve" — promessa sem recurso por trás vira cancelamento depois.
+const planos: Array<{ nome: string; preco: string; resumo: string; itens: Item[]; destaque: boolean }> = [
   {
-    nome: "Balcão",
-    preco: "R$ 89",
-    resumo: "Para uma loja começar hoje.",
+    nome: "Essencial",
+    preco: `R$ ${PRECO_PLANO.essencial}`,
+    resumo: "O cartão de papel, agora na carteira do celular.",
     itens: [
-      "1 loja e 2 operadores",
-      "Clientes ilimitados",
-      "Apple Wallet e Google Wallet",
-      "Painel com selos e resgates",
-      "Suporte por e-mail",
+      { texto: "Clientes ilimitados" },
+      { texto: "Cartão na Apple Wallet e na Google Wallet" },
+      { texto: "Painel e app para iPhone e Android" },
+      { texto: "Cadastro por link e QR no balcão" },
+      { texto: "Leitura de QR e busca de cliente, 1 selo por leitura" },
+      { texto: "Cartão com o seu nome, logo e cores" },
+      { texto: "Aviso de prêmio liberado na carteira" },
+      { texto: "Suporte por e-mail" },
     ],
     destaque: false,
   },
   {
-    nome: "Rede",
-    preco: "R$ 189",
-    resumo: "Para quem tem mais de um ponto.",
+    nome: "Pro",
+    preco: `R$ ${PRECO_PLANO.pro}`,
+    resumo: "O cartão que traz o cliente de volta sozinho.",
     itens: [
-      "Até 5 unidades e operadores ilimitados",
-      "Cartão com a identidade da sua marca",
-      "Campanha de aniversário",
-      "Relatórios de retorno",
-      "Suporte prioritário no WhatsApp",
+      { texto: "Tudo do Essencial" },
+      { texto: "Avisos automáticos: novo selo, quase lá e lembrete de prêmio" },
+      { texto: "Aniversário com selo de presente" },
+      { texto: "Textos dos avisos com a voz da sua loja" },
+      { texto: "Estúdio de Marca completo: ícones e imagens dos selos" },
+      { texto: "Vários selos por compra" },
+      { texto: "Indicadores de retorno e progresso dos cartões" },
+      { texto: "Suporte no WhatsApp" },
     ],
     destaque: true,
   },
   {
-    nome: "Marca",
-    preco: "Sob medida",
-    resumo: "Para franquias e operações grandes.",
+    nome: "Completo",
+    preco: `R$ ${PRECO_PLANO.completo}`,
+    resumo: "Para operar e crescer com equipe e dados.",
     itens: [
-      "Unidades ilimitadas",
-      "Assinatura Boomii removida do cartão",
-      "Integração com o seu sistema de caixa",
-      "Ambiente de testes dedicado",
-      "Gerente de conta",
+      { texto: "Tudo do Pro" },
+      { texto: `Filiais: 1 unidade inclusa, + R$ ${PRECO_UNIDADE_EXTRA}/mês por unidade extra`, emBreve: true },
+      { texto: "Gerente de filial com acesso próprio", emBreve: true },
+      { texto: "Planilha com as métricas de cada cliente", emBreve: true },
+      { texto: "Campanhas para grupos de clientes", emBreve: true },
+      { texto: "Cartão sem a marca Boomii", emBreve: true },
+      { texto: "Seu cartão criado pela nossa equipe" },
+      { texto: "Suporte prioritário no WhatsApp" },
     ],
     destaque: false,
   },
@@ -80,9 +94,16 @@ export const SitePrecos: React.FC<SitePrecosProps> = ({ onNavigate }) => {
             <p className="mt-2 text-sm text-muted-foreground">{p.resumo}</p>
             <ul className="mt-6 flex-1 space-y-3">
               {p.itens.map((item) => (
-                <li key={item} className="flex items-start gap-3 text-sm text-muted-foreground">
+                <li key={item.texto} className="flex items-start gap-3 text-sm text-muted-foreground">
                   <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                  {item}
+                  <span>
+                    {item.texto}
+                    {item.emBreve && (
+                      <span className="ml-1.5 rounded-full border border-primary/40 px-1.5 py-px text-[10px] font-semibold text-primary align-middle">
+                        em breve
+                      </span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -91,14 +112,14 @@ export const SitePrecos: React.FC<SitePrecosProps> = ({ onNavigate }) => {
               onClick={() => onNavigate('contato')}
               className={`mt-8 cursor-pointer ${p.destaque ? "btn-boomii" : "btn-boomii-ghost hover:bg-secondary"}`}
             >
-              {p.preco === "Sob medida" ? "Falar com vendas" : "Assinar"}
+              Assinar
             </button>
           </article>
         ))}
       </div>
 
       <p className="mt-8 text-xs text-muted-foreground">
-        Valores de exemplo para você ajustar. Diga quais preços quer praticar e eu atualizo.
+        Plano anual com 2 meses grátis. Troque de plano quando quiser: o upgrade vale na hora.
       </p>
     </div>
   );

@@ -18,6 +18,8 @@ interface CardStudioProps {
   /** Bloqueia a publicação (ex.: lojista inadimplente). */
   readOnlyReason?: string | null;
   onToast?: (message: string) => void;
+  /** false no plano Essencial: só nome, logo, cores, selos e prêmio. */
+  estudioCompleto?: boolean;
 }
 
 function makeSampleHolder(design: CardDesign): CardHolderData {
@@ -38,7 +40,7 @@ function makeSampleHolder(design: CardDesign): CardHolderData {
  * no Firestore e consumido tanto pela prévia quanto pela geração real do passe
  * na Apple Wallet e na Google Wallet.
  */
-export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, onToast }) => {
+export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, onToast, estudioCompleto = true }) => {
   const [design, setDesign] = useState<CardDesign>(() => createDefaultDesign());
   const [holder, setHolder] = useState<CardHolderData>(() => makeSampleHolder(createDefaultDesign()));
   const [loading, setLoading] = useState(true);
@@ -123,8 +125,8 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
   };
 
   const sectionProps = useMemo(
-    () => ({ design, patch, onError: (msg: string) => onToast?.(msg) }),
-    [design, patch, onToast]
+    () => ({ design, patch, onError: (msg: string) => onToast?.(msg), basico: !estudioCompleto }),
+    [design, patch, onToast, estudioCompleto]
   );
 
   if (loading) {
@@ -205,8 +207,8 @@ export const CardStudio: React.FC<CardStudioProps> = ({ slug, readOnlyReason, on
           <ColorsSection {...sectionProps} />
           <StampsSection {...sectionProps} />
           <RewardSection {...sectionProps} />
-          <FieldsSection {...sectionProps} />
-          <QrSection {...sectionProps} />
+          {estudioCompleto && <FieldsSection {...sectionProps} />}
+          {estudioCompleto && <QrSection {...sectionProps} />}
         </div>
 
         <div className="lg:col-span-5">

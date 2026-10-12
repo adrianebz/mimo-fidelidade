@@ -20,6 +20,8 @@
  *    trazem um número que muda (selos, dias).
  */
 
+const planos = require('./planos');
+
 /** Textos e regras padrão. O lojista sobrescreve em `lojistas/{id}.notificacoes`. */
 const PADRAO = {
   selo: {
@@ -66,14 +68,33 @@ const PADRAO = {
 
 const TIPOS = ['selo', 'quaseLa', 'completo', 'aniversario', 'lembrete'];
 
-/** Config da loja mesclada com o padrão, campo a campo. */
+/** Recurso do plano que libera cada tipo de aviso ("completo" vale em todos). */
+const RECURSO_DO_AVISO = {
+  selo: 'avisoNovoSelo',
+  quaseLa: 'avisoQuaseLa',
+  aniversario: 'avisoAniversario',
+  lembrete: 'avisoLembrete',
+};
+
+/**
+ * Config da loja mesclada com o padrão, campo a campo — e recortada pelo
+ * plano. Todos os avisos passam por aqui (carimbo, aniversário, lembrete,
+ * envio manual), então é o único ponto que precisa conhecer o plano.
+ */
 function resolverConfig(loja) {
   const salva = loja?.notificacoes || {};
+  const textosProprios = planos.temRecurso(loja, 'textosPersonalizados');
   const cfg = {};
   for (const tipo of TIPOS) {
-    cfg[tipo] = { ...PADRAO[tipo], ...(salva[tipo] || {}) };
+    // Sem textos personalizados, valem os textos padrão (o liga/desliga sim).
+    const proprio = salva[tipo] || {};
+    cfg[tipo] = textosProprios
+      ? { ...PADRAO[tipo], ...proprio }
+      : { ...PADRAO[tipo], ...(proprio.ativo !== undefined ? { ativo: proprio.ativo } : {}) };
+    const recurso = RECURSO_DO_AVISO[tipo];
+    if (recurso && !planos.temRecurso(loja, recurso)) cfg[tipo].ativo = false;
   }
-  cfg.variaveis = { ...PADRAO.variaveis, ...(salva.variaveis || {}) };
+  cfg.variaveis = textosProprios ? { ...PADRAO.variaveis, ...(salva.variaveis || {}) } : { ...PADRAO.variaveis };
   return cfg;
 }
 
@@ -83,7 +104,7 @@ function plural(n, singular, pluralTxt) {
 
 /** Variáveis disponíveis nos textos: {nome}, {loja}, {selos}, {meta}, {faltam}, {premio}... */
 function montarVariaveis(loja, dados) {
-  const customVars = loja?.notificacoes?.variaveis || {};
+  const customVars = planos.temRecurso(loja, 'textosPersonalizados') ? loja?.notificacoes?.variaveis || {} : {};
   const meta = Number(dados.meta) || 10;
   const selos = Number(dados.selos) || 0;
   const faltam = Math.max(0, meta - selos);

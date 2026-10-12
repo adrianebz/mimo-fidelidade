@@ -10,6 +10,7 @@ const { renderStampBanner } = require('./banner');
 const { montarCamposDoPasse, paraTextModules, paraLabelValueRows, resolverCampos } = require('./pass-fields');
 const notificacoes = require('./notificacoes');
 const operadores = require('./operadores');
+const planos = require('./planos');
 
 if (!admin.apps || !admin.apps.length) {
   admin.initializeApp();
@@ -262,6 +263,68 @@ async function gerarSaveUrl(snap, loja, clienteParam) {
 }
 
 /**
+ * Ajusta o visual do cartão ao plano da loja.
+ *
+ * Essencial usa o modelo básico (ver planos.designBasico). O visual premium
+ * não é perdido: vai para `designPlanoSuperior` e volta sozinho quando a loja
+ * sobe de plano. Num downgrade, `financeiro.carenciaVisualAte` (gravado pelo
+ * admin) segura o visual por 30 dias, para os clientes não verem o cartão
+ * mudar de repente.
+ *
+ * Devolve true se gravou algo — a própria gravação dispara de novo o trigger
+ * da loja, que então sincroniza o cartão com o visual já ajustado.
+ */
+async function aplicarVisualDoPlano(ref, loja) {
+  const apagar = admin.firestore.FieldValue.delete();
+
+  if (planos.temRecurso(loja, 'estudioCompleto')) {
+    const backup = loja.designPlanoSuperior;
+    if (!backup) return false;
+    const atual = loja.design || {};
+    // Volta o acabamento premium, sem desfazer o que foi editado no básico
+    // (nome, logo, cores, quantidade de selos, texto do prêmio).
+    const restaurado = {
+      ...atual,
+      stamps: { ...(backup.stamps || {}), total: atual.stamps?.total ?? backup.stamps?.total },
+      reward: {
+        ...(atual.reward || {}),
+        iconKey: backup.reward?.iconKey,
+        imageDataUrl: backup.reward?.imageDataUrl ?? null,
+        color: backup.reward?.color,
+      },
+      fields: backup.fields || atual.fields,
+      qr: backup.qr || atual.qr,
+    };
+    const upd = { design: restaurado, designPlanoSuperior: apagar };
+    for (const [k, v] of Object.entries(loja.layoutPlanoSuperior || {})) upd[`layout.${k}`] = v;
+    if (loja.layoutPlanoSuperior) upd.layoutPlanoSuperior = apagar;
+    await ref.update(upd);
+    console.log(`Visual premium restaurado para ${ref.id} (plano ${planos.planoDaLoja(loja)}).`);
+    return true;
+  }
+
+  if (planos.visualDentroDoPlano(loja)) return false;
+  if ((Number(loja.financeiro?.carenciaVisualAte) || 0) > Date.now()) return false;
+
+  const upd = {};
+  if (loja.design) {
+    upd.design = planos.designBasico(loja.design);
+    if (!loja.designPlanoSuperior) upd.designPlanoSuperior = loja.design;
+  }
+  const layoutGuardado = {};
+  for (const k of planos.LAYOUT_PREMIUM) {
+    if (loja.layout?.[k]) {
+      layoutGuardado[k] = loja.layout[k];
+      upd[`layout.${k}`] = apagar;
+    }
+  }
+  if (Object.keys(layoutGuardado).length && !loja.layoutPlanoSuperior) upd.layoutPlanoSuperior = layoutGuardado;
+  await ref.update(upd);
+  console.log(`Visual de ${ref.id} ajustado ao plano Essencial (premium guardado).`);
+  return true;
+}
+
+/**
  * 4.2 Sincronizar a classe da loja no Google Wallet
  * Dispara automaticamente quando o documento de lojistas/{lojaId} for gravado
  */
@@ -271,6 +334,10 @@ exports.sincronizarClasse = onDocumentWritten(
     const loja = event.data?.after?.data();
     const lojaAntes = event.data?.before?.data();
     if (!loja) return;
+
+    // Visual fora do plano (ou premium para restaurar): ajusta e sai — a
+    // gravação dispara este trigger de novo, que sincroniza o visual certo.
+    if (await aplicarVisualDoPlano(event.data.after.ref, loja)) return;
 
     // Guarda contra auto-disparo infinito: esta function grava 'wallet.classId' e
     // 'wallet.classSincronizadaEm' no próprio documento que a disparou. Sem esta
@@ -686,10 +753,10 @@ exports.carimbar = onCall(
       // O teto vem da configuração da loja e protege contra erro de digitação
       // do operador — sem ele, um "50" sem querer zeraria a cartela do cliente.
       const meta = cartao.meta || 10;
-      const maxPorLeitura = Math.max(
-        1,
-        Number(loja.design?.stamps?.maxPerScan ?? loja.regras?.maxSelosPorLeitura ?? 10)
-      );
+      // Vários selos numa leitura é recurso do Pro; no Essencial, 1 por leitura.
+      const maxPorLeitura = planos.temRecurso(loja, 'variosSelosPorLeitura')
+        ? Math.max(1, Number(loja.design?.stamps?.maxPerScan ?? loja.regras?.maxSelosPorLeitura ?? 10))
+        : 1;
       const pedido = Math.floor(Number(quantidade ?? loja.design?.stamps?.perScan ?? 1));
 
       if (!Number.isFinite(pedido) || pedido < 1) {
@@ -697,8 +764,10 @@ exports.carimbar = onCall(
       }
       if (pedido > maxPorLeitura) {
         throw new HttpsError(
-          'invalid-argument',
-          `Máximo de ${maxPorLeitura} selos por operação nesta loja.`
+          planos.temRecurso(loja, 'variosSelosPorLeitura') ? 'invalid-argument' : 'permission-denied',
+          planos.temRecurso(loja, 'variosSelosPorLeitura')
+            ? `Máximo de ${maxPorLeitura} selos por operação nesta loja.`
+            : 'No plano Essencial, cada leitura credita 1 selo. Vários selos por compra estão disponíveis a partir do plano Pro.'
         );
       }
 
@@ -1494,6 +1563,22 @@ exports.migrarPinsOperadores = onCall({ region: 'southamerica-east1' }, async (r
  * deploy e depois só pega o que um admin eventualmente gravar no lugar antigo.
  * Lê apenas os documentos das lojas — custo desprezível.
  */
+/**
+ * Fim da carência de visual após um downgrade: sem isso, o visual premium só
+ * seria ajustado na próxima vez que alguém gravasse a loja.
+ */
+exports.aplicarPlanosAgendado = onSchedule(
+  { schedule: '0 3 * * *', timeZone: 'America/Sao_Paulo' },
+  async () => {
+    const snap = await admin.firestore().collection('lojistas').get();
+    let ajustadas = 0;
+    for (const d of snap.docs) {
+      if (await aplicarVisualDoPlano(d.ref, d.data() || {})) ajustadas++;
+    }
+    if (ajustadas) console.log(`Planos: visual ajustado em ${ajustadas} loja(s).`);
+  }
+);
+
 exports.limparPinsPublicos = onSchedule(
   { schedule: 'every 60 minutes', timeZone: 'America/Sao_Paulo' },
   async () => {
@@ -1522,6 +1607,7 @@ exports.dispararNotificacaoManual = onCall(
     const lojaSnap = await db.doc(`lojistas/${lojaId}`).get();
     if (!lojaSnap.exists) throw new HttpsError('not-found', 'Loja não encontrada.');
     const loja = lojaSnap.data() || {};
+    planos.exigirRecurso(loja, 'envioManual', 'O envio manual de avisos');
 
     // Busca o cartão ativo ou completo do cliente
     const cartoesSnap = await db.collection('cartoes')

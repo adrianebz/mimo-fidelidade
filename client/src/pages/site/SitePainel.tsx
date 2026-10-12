@@ -63,6 +63,8 @@ import { ToggleTema } from "../../components/ToggleTema.js";
 import { EditarClienteModal } from "../../components/EditarClienteModal.js";
 import { ReenviarCartaoModal } from "../../components/ReenviarCartaoModal.js";
 import { urlCadastroCliente } from "../../siteConfig.js";
+import { Plano, Recurso, NOME_PLANO, normalizarPlano, temRecurso } from "../../planos.js";
+import { RecursoBloqueado } from "../../components/RecursoBloqueado.js";
 
 type DashboardTab = "visao-geral" | "identidade" | "itens" | "clientes" | "aniversarios" | "produtos";
 
@@ -251,6 +253,9 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
   const [selosPorLeitura, setSelosPorLeitura] = useState(1);
   const [maxSelosPorLeitura, setMaxSelosPorLeitura] = useState(10);
   const [permiteAlterarQuantidade, setPermiteAlterarQuantidade] = useState(true);
+  /** Plano comercial da loja (Essencial/Pro/Completo) — só para exibir cadeados. */
+  const [plano, setPlano] = useState<Plano>("pro");
+  const pode = (recurso: Recurso) => temRecurso(plano, recurso);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState("");
@@ -368,7 +373,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
     .sort((a, b) => a.dias - b.dias);
   const totalAvisos = aniversariosProximos.length + recompensasPendentes.length;
   // Mesmo limite de 0 a 5 que a campanhaAniversario aplica no servidor.
-  const bonusAniversario = notificacoesConfig.aniversario.ativo
+  // No Essencial o servidor não roda a campanha de aniversário: sem bônus.
+  const bonusAniversario = notificacoesConfig.aniversario.ativo && temRecurso(plano, "avisoAniversario")
     ? Math.max(0, Math.min(5, Number(notificacoesConfig.aniversario.bonus) || 0))
     : 0;
   const premioLoja = notificacoesConfig.variaveis?.premio || "a recompensa";
@@ -408,6 +414,15 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
       setSelosPorLeitura(Math.max(1, Math.min(padrao, teto)));
       setMaxSelosPorLeitura(Math.max(1, teto));
       setPermiteAlterarQuantidade(design?.stamps?.allowOperatorOverride !== false);
+
+      // Plano da loja: o servidor já aplica os limites; aqui só exibimos.
+      const planoLoja = normalizarPlano(loja.financeiro?.plano);
+      setPlano(planoLoja);
+      if (!temRecurso(planoLoja, "variosSelosPorLeitura")) {
+        setSelosPorLeitura(1);
+        setMaxSelosPorLeitura(1);
+        setPermiteAlterarQuantidade(false);
+      }
       if (loja.nome) {
         setCardConfig((prev) => ({
           ...prev,
@@ -993,7 +1008,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
               title="Conta verificada e homologada pelo Administrador BOOMII"
             >
               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-              {rotulos && <span className="truncate">Plano Pro • Validado</span>}
+              {rotulos && <span className="truncate">Plano {NOME_PLANO[plano]} • Ativo</span>}
             </div>
           ) : (
             <div
@@ -1003,7 +1018,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
               title="Conta suspensa pelo Administrador BOOMII por pendência financeira"
             >
               <Lock className="h-3.5 w-3.5 shrink-0" />
-              {rotulos && <span className="truncate">Plano Pro • Bloqueado</span>}
+              {rotulos && <span className="truncate">Plano {NOME_PLANO[plano]} • Bloqueado</span>}
             </div>
           )}
 
@@ -1296,11 +1311,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   acao: recompensasProntas > 0 ? () => setCurrentTab("aniversarios") : undefined,
                 },
                 {
-                  Icone: TrendingUp,
+                  Icone: pode("indicadoresAvancados") ? TrendingUp : Lock,
                   cor: "text-sky-400 bg-sky-500/10 border-sky-500/20",
                   rotulo: "Voltaram",
-                  valor: `${taxaRetorno}%`,
-                  detalhe: `${clientesRetorno} com 2+ selos no ciclo`,
+                  valor: pode("indicadoresAvancados") ? `${taxaRetorno}%` : "—",
+                  detalhe: pode("indicadoresAvancados")
+                    ? `${clientesRetorno} com 2+ selos no ciclo`
+                    : "Disponível no plano Pro",
                 },
               ].map(({ Icone, cor, rotulo, valor, detalhe, acao }) => {
                 const conteudo = (
@@ -1436,7 +1453,13 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   <h2 className="text-xl font-bold text-foreground mt-1">Progresso dos cartões</h2>
                 </div>
 
-                {totalClientes === 0 ? (
+                {!pode("indicadoresAvancados") ? (
+                  <RecursoBloqueado
+                    recurso="indicadoresAvancados"
+                    titulo="Veja quem está perto da recompensa"
+                    descricao="Quantos clientes estão com a recompensa pronta, quase lá, acumulando ou ainda sem selos — e quantos voltaram."
+                  />
+                ) : totalClientes === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     Assim que os primeiros clientes pontuarem, você vê aqui quantos estão perto da recompensa.
                   </p>
@@ -1463,7 +1486,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                   </div>
                 )}
 
-                {faixasProgresso.quaseLa > 0 && (
+                {pode("indicadoresAvancados") && faixasProgresso.quaseLa > 0 && (
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {faixasProgresso.quaseLa} {faixasProgresso.quaseLa === 1 ? "cliente está" : "clientes estão"} perto da recompensa — o aviso "Quase lá" da carteira ajuda a trazê-{faixasProgresso.quaseLa === 1 ? "lo" : "los"} de volta.
                   </p>
@@ -1479,6 +1502,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
           <div className="animate-fade-in">
             <CardStudio
               slug={currentSlug}
+              estudioCompleto={pode("estudioCompleto")}
               readOnlyReason={
                 financialStatus === "inadimplente"
                   ? "Conta com pendência financeira: regularize a assinatura para publicar alterações no cartão."
@@ -2029,7 +2053,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                             {dias === 0 ? 'Hoje 🎂' : dias === 1 ? 'Amanhã' : `Em ${dias} dias`} · {c.birthday}
                           </span>
                         </div>
-                        {dias === 0 && (
+                        {dias === 0 && pode("envioManual") && (
                           <button
                             type="button"
                             onClick={() => handleSendNotification(c.id, c.name, "aniversario")}
@@ -2093,7 +2117,8 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                             {c.stamps}/{c.totalStamps || 10} selos
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className={`grid gap-2 ${pode("envioManual") ? "grid-cols-2" : "grid-cols-1"}`}>
+                          {pode("envioManual") && (
                           <button
                             type="button"
                             onClick={() => handleSendNotification(c.id, c.name, "recompensa")}
@@ -2102,6 +2127,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                             <Bell className="w-3.5 h-3.5" />
                             <span>Lembrar</span>
                           </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleRedeemReward(c.id)}
@@ -2119,6 +2145,7 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             </div>
 
             {/* Configurações de Notificações na Carteira */}
+            {pode("textosPersonalizados") ? (
             <div className="surface-panel p-4 sm:p-6 rounded-2xl space-y-6 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/40 pb-4">
                 <div>
@@ -2617,6 +2644,15 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
                 </div>
               </div>
             </div>
+            ) : (
+              // Essencial: o servidor envia só "Prêmio liberado", com o texto
+              // padrão. Em vez de um editor que não teria efeito, o que o Pro libera.
+              <RecursoBloqueado
+                recurso="textosPersonalizados"
+                titulo="Avisos automáticos que trazem o cliente de volta"
+                descricao="No seu plano, o cliente recebe o aviso de Prêmio liberado. No Pro, a carteira também avisa a cada selo, quando falta pouco para o prêmio, no aniversário (com selo de presente) e lembra quem não retirou o prêmio — com os textos da sua loja."
+              />
+            )}
           </div>
         )}
 
@@ -2831,10 +2867,22 @@ export const SitePainel: React.FC<{ onNavigate: (tab: SiteNavTab) => void; onSai
             <div className="px-3 py-2.5 bg-card border-b border-border flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-foreground block">Selos por atendimento</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {permiteAlterarQuantidade
-                    ? `Ajuste se o cliente levar vários itens (até ${maxSelosPorLeitura})`
-                    : "Quantidade fixada pelo Estúdio"}
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                  {!pode("variosSelosPorLeitura") ? (
+                    <>
+                      <span>1 selo por leitura</span>
+                      <RecursoBloqueado
+                        compacto
+                        recurso="variosSelosPorLeitura"
+                        titulo="Vários selos por compra"
+                        descricao=""
+                      />
+                    </>
+                  ) : permiteAlterarQuantidade ? (
+                    `Ajuste se o cliente levar vários itens (até ${maxSelosPorLeitura})`
+                  ) : (
+                    "Quantidade fixada pelo Estúdio"
+                  )}
                 </span>
               </div>
 
