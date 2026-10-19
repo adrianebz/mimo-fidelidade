@@ -234,8 +234,8 @@ export const StampsSection: React.FC<SectionProps> = ({ design, patch, onError, 
         <span className="label-eyebrow block">Selos por atendimento</span>
         <p className="text-[11px] text-muted-foreground leading-snug mt-1">
           Quando um cliente leva vários itens de uma vez, o balcão credita tudo numa
-          operação só. Se a cartela encher no meio do caminho, o que sobra fica
-          guardado e entra automaticamente no ciclo seguinte — o cliente não perde selos.
+          operação só. A compra não passa da cartela: se faltam 2 para completar, o
+          balcão dá 2 agora e o restante depois do resgate.
         </p>
       </div>
 

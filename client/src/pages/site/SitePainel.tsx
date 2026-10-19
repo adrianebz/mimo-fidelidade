@@ -802,9 +802,14 @@ export const SitePainel: React.FC<{
     }
   };
 
+  // Trava síncrona contra toque duplo (ver processStamp).
+  const carimbandoRef = useRef(false);
+
   // Process stamp from QR code or manual input
   const processStamp = async (qrText: string) => {
-    if (!qrText.trim() || isProcessingStamp) return;
+    // A ref muda no mesmo instante; o estado só na próxima renderização — um
+    // toque duplo rápido passava pelos dois e mandava dois carimbos.
+    if (!qrText.trim() || isProcessingStamp || carimbandoRef.current) return;
 
     // Trava de inadimplência da empresa no balcão
     if (financialStatus === "inadimplente") {
@@ -819,6 +824,7 @@ export const SitePainel: React.FC<{
       return;
     }
 
+    carimbandoRef.current = true;
     setIsProcessingStamp(true);
     try {
       const result = await carimbarSelo({
@@ -862,25 +868,24 @@ export const SitePainel: React.FC<{
 
       const creditados = result.creditados ?? 1;
       const sufixoExcedente = result.excedente
-        ? ` (${result.excedente} guardado${result.excedente > 1 ? 's' : ''} para o próximo ciclo)`
-        : '';
+        ? ` ${result.excedente} ${result.excedente > 1 ? "ficaram guardados" : "ficou guardado"} para o próximo ciclo.`
+        : "";
+      // A conta inteira, para não parecer que "somou errado": tinha → agora.
+      const conta =
+        typeof result.selosAntes === "number" ? ` (tinha ${result.selosAntes}, agora ${result.selos}/${result.meta})` : ` — ${result.selos}/${result.meta}`;
+      const onde = unidadeAtendimento !== "principal" && nomeUnidadeAtual ? ` em ${nomeUnidadeAtual}` : "";
 
       if (creditados === 0) {
         showToast("✅ Venda registrada (itens que não pontuam).");
       } else if (result.completo) {
-        showToast(`🎉 Cartela completa! Prêmio liberado: ${result.premio}!${sufixoExcedente}`);
-      } else if (creditados > 1) {
-        showToast(`✅ ${creditados} selos registrados — ${result.selos}/${result.meta}${sufixoExcedente}`);
+        showToast(`🎉 +${creditados}${conta}. Cartela completa! Prêmio liberado: ${result.premio}!${sufixoExcedente}`);
       } else {
-        showToast(
-          `✅ Selo ${result.selos}/${result.meta} registrado` +
-            (unidadeAtendimento !== "principal" && nomeUnidadeAtual ? ` em ${nomeUnidadeAtual}` : "") +
-            "!"
-        );
+        showToast(`✅ +${creditados} ${creditados === 1 ? "selo" : "selos"}${onde}${conta}.${sufixoExcedente}`);
       }
     } catch (err: any) {
       showToast(err.message || "Erro ao registrar selo.");
     } finally {
+      carimbandoRef.current = false;
       setIsProcessingStamp(false);
     }
   };
@@ -1002,25 +1007,23 @@ export const SitePainel: React.FC<{
         unidadeId: unidadeAtendimento,
       });
 
-      setCustomers((prev) =>
-        prev.map((c) => {
-          if (c.id === customerId || (lastStampResult && c.name.includes(lastStampResult.cliente))) {
-            return { ...c, stamps: 0, lastVisit: "Recompensa resgatada hoje" };
-          }
-          return c;
-        })
-      );
-
-      if (lastStampResult) {
-        setLastStampResult({
-          ...lastStampResult,
-          selos: 0,
-          completo: false,
-        });
-      }
+      // O novo ciclo NÃO começa sempre do zero: os selos que sobraram de uma
+      // compra maior que a cartela ficam guardados e entram agora. Antes a tela
+      // mostrava 0 — o operador dava +3 sobre 2 guardados e via "5".
+      const iniciais = res.selosTransportados ?? 0;
+      const atualizar = (c: Customer): Customer =>
+        c.id === customerId ? { ...c, stamps: iniciais, lastVisit: "Recompensa resgatada hoje" } : c;
+      setCustomers((prev) => prev.map(atualizar));
+      setScannedCustomer((prev) => (prev ? atualizar(prev) : prev));
+      setLastStampResult(null);
 
       playSuccessSound(true);
-      showToast(`🎁 Boomii entregue com sucesso: ${res.premio}! Novo ciclo #${res.novoCiclo} iniciado.`);
+      showToast(
+        `🎁 Recompensa entregue: ${res.premio}! Novo ciclo #${res.novoCiclo}` +
+          (iniciais > 0
+            ? ` já começa com ${iniciais} ${iniciais === 1 ? "selo guardado" : "selos guardados"} da última compra.`
+            : " iniciado.")
+      );
     } catch (err: any) {
       showToast(err.message || "Erro ao resgatar recompensa.");
     }
@@ -3072,11 +3075,55 @@ export const SitePainel: React.FC<{
                           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, (scannedCustomer.stamps / total) * 100)}%` }} />
                           </div>
+                          {/* Prévia: o que a confirmação vai fazer, antes de fazer. */}
+                          {(() => {
+                            const qtd = modoItens ? selosDoCarrinho(itensAtivos, carrinho) : selosPorLeitura;
+                            if (scannedCustomer.stamps >= total) {
+                              return (
+                                <p className="text-[11px] font-semibold text-amber-500 pt-1">
+                                  Cartela completa: resgate a recompensa antes de dar novos selos.
+                                </p>
+                              );
+                            }
+                            if (qtd <= 0) return null;
+                            // Regra: a compra não passa da cartela.
+                            const cabem = total - scannedCustomer.stamps;
+                            if (qtd > cabem) {
+                              return (
+                                <div className="pt-1 space-y-1.5">
+                                  <p className="text-[11px] font-semibold text-amber-500">
+                                    Cabem só {cabem} {cabem === 1 ? "selo" : "selos"} nesta cartela. Dê {cabem} agora e o restante depois do resgate.
+                                  </p>
+                                  {!modoItens && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelosPorLeitura(cabem)}
+                                      className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-600 dark:text-amber-300 cursor-pointer"
+                                    >
+                                      Ajustar para {cabem}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            const depois = scannedCustomer.stamps + qtd;
+                            return (
+                              <p className="text-[11px] text-muted-foreground pt-1">
+                                Depois: <strong className="text-foreground">{scannedCustomer.stamps} → {depois}/{total}</strong>
+                                {depois === total && " · completa a cartela"}
+                              </p>
+                            );
+                          })()}
                         </div>
                       </div>
                       <button
                         type="button"
-                        disabled={isProcessingStamp}
+                        // Cartela completa ou compra maior que o que cabe: o servidor recusa.
+                        disabled={
+                          isProcessingStamp ||
+                          scannedCustomer.stamps >= total ||
+                          (modoItens ? selosDoCarrinho(itensAtivos, carrinho) : selosPorLeitura) > total - scannedCustomer.stamps
+                        }
                         onClick={() => handleScanCustomerQR(scannedCustomer.id)}
                         className="btn-boomii w-full py-3 text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                       >

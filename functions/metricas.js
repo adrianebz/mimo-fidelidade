@@ -124,6 +124,10 @@ function linhaDoTempo(eventos, limite = 40) {
       ciclo: e.cicloResgatado,
       operador: e.operadorNome,
       unidade: e.unidadeNome,
+      // Regra antiga: selos que não couberam ficavam guardados e entravam no
+      // ciclo seguinte. Mostrar explica o "saldo" que parecia somar errado.
+      guardados: Number(e.excedenteReservado) || undefined,
+      transportados: e.tipo === 'resgate' ? Number(e.selosTransportados) || undefined : undefined,
       itens: Array.isArray(e.itens) ? e.itens.map((i) => ({ nome: i.nome, qtd: i.qtd })) : undefined,
     }));
 }

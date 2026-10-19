@@ -66,6 +66,8 @@ export interface StampResult {
   excedente?: number;
   /** Total acumulado à espera do próximo ciclo. */
   selosPendentes?: number;
+  /** Selos que o cliente tinha antes deste carimbo. */
+  selosAntes?: number;
 }
 
 export interface LojistaFirestoreData {
@@ -511,10 +513,10 @@ export async function resgatarPremio(params: {
   pin?: string;
   lojaId: string;
   unidadeId?: string;
-}): Promise<{ sucesso: boolean; premio: string; novoCiclo: number }> {
+}): Promise<{ sucesso: boolean; premio: string; novoCiclo: number; selosTransportados: number }> {
   const resgatarFn = httpsCallable<
     { cartaoId: string; pin?: string; lojaId: string; unidadeId?: string },
-    { sucesso: boolean; premio: string; novoCiclo: number; cliente: string }
+    { sucesso: boolean; premio: string; novoCiclo: number; cliente: string; selosTransportados?: number }
   >(functions, 'resgatar');
 
   const { data } = await resgatarFn({
@@ -523,7 +525,13 @@ export async function resgatarPremio(params: {
     ...(params.unidadeId ? { unidadeId: params.unidadeId } : {}),
     lojaId: params.lojaId,
   });
-  return { sucesso: data.sucesso, premio: data.premio, novoCiclo: data.novoCiclo };
+  return {
+    sucesso: data.sucesso,
+    premio: data.premio,
+    novoCiclo: data.novoCiclo,
+    // Selos guardados de uma compra maior que a cartela: já entram no novo ciclo.
+    selosTransportados: Number(data.selosTransportados) || 0,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1074,6 +1082,10 @@ export interface EventoFicha {
   operador?: string;
   unidade?: string;
   itens?: Array<{ nome: string; qtd: number }>;
+  /** Selos que não couberam e ficaram guardados (regra antiga). */
+  guardados?: number;
+  /** Resgate: selos guardados que entraram no novo ciclo. */
+  transportados?: number;
 }
 
 /** Ficha do cliente (plano Pro+): métricas e linha do tempo. */

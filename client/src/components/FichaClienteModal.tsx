@@ -38,7 +38,13 @@ function descreverEvento(e: EventoFicha): { Icone: React.ComponentType<{ classNa
     return { Icone: ShoppingBag, texto: `Comprou ${listaItens(e) || 'itens'} (sem selo)`, cor: 'text-muted-foreground' };
   }
   if (e.tipo === 'resgate') {
-    return { Icone: Gift, texto: `Resgatou ${e.premio || 'a recompensa'}${e.ciclo ? ` (${e.ciclo}º ciclo)` : ''}`, cor: 'text-emerald-500' };
+    return {
+      Icone: Gift,
+      texto:
+        `Resgatou ${e.premio || 'a recompensa'}${e.ciclo ? ` (${e.ciclo}º ciclo)` : ''}` +
+        (e.transportados ? ` · novo ciclo começou com ${e.transportados} ${e.transportados === 1 ? 'selo guardado' : 'selos guardados'}` : ''),
+      cor: 'text-emerald-500',
+    };
   }
   if (e.tipo === 'bonus_aniversario') {
     return { Icone: Cake, texto: `Presente de aniversário: +${e.selos ?? 0} ${e.selos === 1 ? 'selo' : 'selos'}`, cor: 'text-primary' };
@@ -47,7 +53,10 @@ function descreverEvento(e: EventoFicha): { Icone: React.ComponentType<{ classNa
   const comprou = listaItens(e);
   return {
     Icone: Award,
-    texto: `+${qtd} ${qtd === 1 ? 'selo' : 'selos'}${e.saldo !== undefined ? ` · saldo ${e.saldo}` : ''}${comprou ? ` · ${comprou}` : ''}`,
+    texto:
+      `+${qtd} ${qtd === 1 ? 'selo' : 'selos'}${e.saldo !== undefined ? ` · saldo ${e.saldo}` : ''}` +
+      (e.guardados ? ` · ${e.guardados} ${e.guardados === 1 ? 'guardado' : 'guardados'} para o próximo ciclo` : '') +
+      (comprou ? ` · ${comprou}` : ''),
     cor: 'text-primary',
   };
 }

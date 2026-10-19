@@ -800,11 +800,19 @@ exports.carimbar = onCall(
       const agora = Date.now();
       const ultimo = cartao.ultimoSeloEm ? cartao.ultimoSeloEm.toMillis() : 0;
       const minMinutos = loja.regras?.intervaloMinimoMin ?? 30;
-      const minMs = minMinutos * 60 * 1000;
+      // Piso de 15 s mesmo com a loja configurada em 0: barra o toque duplo
+      // no "Confirmar" (dois carimbos da mesma compra em sequência).
+      const PISO_TOQUE_DUPLO_MS = 15 * 1000;
+      const minMs = Math.max(PISO_TOQUE_DUPLO_MS, minMinutos * 60 * 1000);
 
       if (ultimo > 0 && agora - ultimo < minMs) {
-        const restanteMin = Math.ceil((minMs - (agora - ultimo)) / 60000);
-        throw new HttpsError('failed-precondition', `Aguarde ${restanteMin} min para novo carimbo neste cartão.`);
+        const restanteMs = minMs - (agora - ultimo);
+        throw new HttpsError(
+          'failed-precondition',
+          restanteMs < 60 * 1000
+            ? `Este cartão acabou de receber selos. Aguarde ${Math.ceil(restanteMs / 1000)} s para um novo carimbo.`
+            : `Aguarde ${Math.ceil(restanteMs / 60000)} min para novo carimbo neste cartão.`
+        );
       }
 
       // Quantos selos esta operação credita (uma compra pode valer vários).
@@ -834,10 +842,24 @@ exports.carimbar = onCall(
 
       const selosAntes = cartao.selos || 0;
       const espacoNaCartela = Math.max(0, meta - selosAntes);
-      const creditados = Math.min(pedido, espacoNaCartela);
-      // O que não coube não é perdido: fica reservado para o próximo ciclo,
-      // aplicado automaticamente quando o prêmio for resgatado.
-      const excedente = pedido - creditados;
+      // Regra da loja (decisão de 2026-10-19): a compra não passa da cartela.
+      // Antes o que sobrava ficava "guardado" e entrava sozinho no próximo
+      // ciclo — o balcão via "deu 9 e foram 10" sem entender por quê. Agora o
+      // operador dá o que cabe; o restante, depois do resgate.
+      if (pedido > espacoNaCartela) {
+        throw new HttpsError(
+          'failed-precondition',
+          venda
+            ? `Esta compra vale ${pedido} selos, mas cabem só ${espacoNaCartela} nesta cartela (${selosAntes}/${meta}). ` +
+                'Marque menos itens agora ou resgate a recompensa primeiro.'
+            : `Cabem só ${espacoNaCartela} ${espacoNaCartela === 1 ? 'selo' : 'selos'} nesta cartela (${selosAntes}/${meta}). ` +
+                `Dê ${espacoNaCartela} agora e o restante depois do resgate.`
+        );
+      }
+      const creditados = pedido;
+      // Nada novo fica guardado. (Selos guardados por cartões antigos, de
+      // antes desta regra, continuam valendo no próximo resgate.)
+      const excedente = 0;
 
       const novosSelos = selosAntes + creditados;
       const completo = novosSelos >= meta;
@@ -904,6 +926,10 @@ exports.carimbar = onCall(
 
       return {
         cartaoId,
+        // Quanto o cliente tinha: o balcão mostra "tinha 1 → agora 10/10",
+        // e não só o resultado (que parecia "somar errado" quando havia
+        // selos guardados de um ciclo anterior).
+        selosAntes,
         selos: novosSelos,
         meta,
         completo,
@@ -1894,7 +1920,7 @@ exports.aprovarUnidade = onCall({ region: 'southamerica-east1' }, async (req) =>
  */
 function erroDeAuthParaUsuario(err, contexto) {
   if (err instanceof HttpsError) return err;
-  const codigo = String(err?.code || '');
+  const codigo = String(err?.errorInfo?.code || err?.code || '');
   console.error(`${contexto}: falha do Firebase Auth`, codigo, err?.message);
   const mensagens = {
     'auth/email-already-exists': 'Este e-mail já tem uma conta. Tente de novo em alguns segundos.',
